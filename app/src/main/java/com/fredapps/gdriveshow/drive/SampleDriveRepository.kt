@@ -1,7 +1,7 @@
 package com.fredapps.gdriveshow.drive
 
 class SampleDriveRepository : DriveRepository {
-    private val items = listOf(
+    private val rootItems = listOf(
         DriveItem(
             id = "family",
             title = "Family Photos",
@@ -75,10 +75,59 @@ class SampleDriveRepository : DriveRepository {
             accentColor = 0xFFFFCC80,
         ),
     )
+    private val childItems = mapOf(
+        "family" to listOf(
+            DriveItem(
+                id = "family-portraits",
+                title = "Portraits",
+                description = "Sample portraits inside Family Photos.",
+                type = DriveMediaType.Image,
+                itemCount = 12,
+                modifiedLabel = "Updated today",
+                accentColor = 0xFF72D6C9,
+            ),
+            DriveItem(
+                id = "family-videos",
+                title = "Birthday Clips",
+                description = "Short family videos from the selected folder.",
+                type = DriveMediaType.Video,
+                durationLabel = "8 videos",
+                modifiedLabel = "Updated yesterday",
+                accentColor = 0xFFFF8A65,
+            ),
+        ),
+        "archive" to listOf(
+            DriveItem(
+                id = "archive-empty",
+                title = "Scanned Receipts",
+                description = "A sample non-media archive folder.",
+                type = DriveMediaType.Folder,
+                itemCount = 0,
+                modifiedLabel = "Updated Apr 29",
+                accentColor = 0xFF9FA8DA,
+            ),
+        ),
+        "shared-drive" to listOf(
+            DriveItem(
+                id = "display-loop",
+                title = "Lobby Loop",
+                description = "Images intended for a shared-display slideshow.",
+                type = DriveMediaType.Image,
+                itemCount = 9,
+                modifiedLabel = "Updated May 2",
+                accentColor = 0xFFFFCC80,
+            ),
+        ),
+    )
 
     override fun connectionState(): DriveConnectionState = DriveConnectionState.Connected("Sample Drive data")
 
-    override fun rootContent(): DriveContentState = DriveContentState.Ready(items)
+    override fun content(folderId: String): DriveContentState =
+        when {
+            folderId == DriveRepository.RootFolderId -> DriveContentState.Ready(rootItems)
+            childItems[folderId].isNullOrEmpty() -> DriveContentState.Empty
+            else -> DriveContentState.Ready(childItems.getValue(folderId))
+        }
 
     override fun slideshowCandidates(items: List<DriveItem>): List<DriveItem> = items.filter { it.isPlayable }
 }

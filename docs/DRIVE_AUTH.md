@@ -67,4 +67,4 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - Enable the Google Drive API.
 - Decide final scope. Prefer the narrowest read-only scope that supports browsing the intended Drive content.
 - Replace the remaining sample account label with token-aware account/profile data.
-- Add folder navigation beyond the Drive root folder.
+- Add persisted folder selection and a folder picker for choosing the startup folder.

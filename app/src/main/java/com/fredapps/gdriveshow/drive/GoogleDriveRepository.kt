@@ -25,17 +25,17 @@ class GoogleDriveRepository(
         }
     }
 
-    override fun rootContent(): DriveContentState {
+    override fun content(folderId: String): DriveContentState {
         return when (val tokenResult = accessTokenProvider.accessToken()) {
             AccessTokenResult.MissingTokens -> DriveContentState.Empty
             is AccessTokenResult.Failed -> DriveContentState.Failed(tokenResult.message)
-            is AccessTokenResult.Ready -> listRootFiles(tokenResult.accessToken)
+            is AccessTokenResult.Ready -> listFiles(accessToken = tokenResult.accessToken, folderId = folderId)
         }
     }
 
     override fun slideshowCandidates(items: List<DriveItem>): List<DriveItem> = items.filter { it.isPlayable }
 
-    private fun listRootFiles(accessToken: String): DriveContentState {
+    private fun listFiles(accessToken: String, folderId: String): DriveContentState {
         return try {
             val files = mutableListOf<DriveItem>()
             var pageToken: String? = null
@@ -45,7 +45,7 @@ class GoogleDriveRepository(
                     accessToken = accessToken,
                     values = buildMap {
                         put("pageSize", "100")
-                        put("q", "'root' in parents and trashed = false")
+                        put("q", "'$folderId' in parents and trashed = false")
                         put("orderBy", "folder,modifiedTime desc,name")
                         put("fields", "nextPageToken,files(id,name,mimeType,modifiedTime,description,videoMediaMetadata)")
                         pageToken?.let { put("pageToken", it) }
@@ -159,4 +159,3 @@ class GoogleDriveRepository(
         const val TimeoutMillis = 15_000
     }
 }
-
