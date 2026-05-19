@@ -26,6 +26,15 @@ Google docs:
 6. App stores refresh/access credentials in Android private credential storage.
 7. `DriveRepository` switches from sample data to real Drive data.
 
+## Current Code
+
+- `GoogleDeviceCodeAuthClient` implements the device-code request and token polling calls.
+- `EncryptedDriveTokenStore` stores OAuth tokens with AndroidX encrypted shared preferences.
+- `DriveAuthConfig` holds the OAuth client ID and requested scopes.
+- `google_oauth_tv_client_id` is currently blank in `app/src/main/res/values/oauth.xml`.
+
+After creating the Google Cloud OAuth client, put the TV/limited-input client ID in `google_oauth_tv_client_id`. Do not add a client secret; this flow is for installed devices that cannot keep secrets.
+
 ## Drive Listing Query
 
 The first Drive-backed repository should request only the fields needed by the UI:
@@ -54,4 +63,4 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - Create a Google Cloud OAuth client of type `TVs and Limited Input devices`.
 - Enable the Google Drive API.
 - Decide final scope. Prefer the narrowest read-only scope that supports browsing the intended Drive content.
-- Add secure token storage before any real credential is persisted.
+- Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`.

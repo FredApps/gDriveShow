@@ -17,6 +17,14 @@ Android TV app for browsing and displaying Google Drive images and videos from t
 
 The first implementation uses sample content and domain models so the browse/slideshow experience can be designed before Google Drive auth and media streaming are wired in.
 
+## Google Drive Auth
+
+The project includes a compile-ready OAuth device-code client and encrypted token store. To use real Drive auth, create a Google OAuth client of type `TVs and Limited Input devices`, then put the client ID in:
+
+```text
+app/src/main/res/values/oauth.xml
+```
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
