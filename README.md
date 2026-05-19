@@ -25,6 +25,8 @@ The project includes a compile-ready OAuth device-code client and encrypted toke
 app/src/main/res/values/oauth.xml
 ```
 
+The Settings screen already includes the TV-friendly connect flow. With the client ID filled in, it can request a code, poll for approval, and store tokens.
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.

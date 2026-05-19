@@ -96,5 +96,6 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 3. Implement a read-only Drive repository that maps Google Drive file metadata to `DriveItem`. Mapper boundary started.
 4. Add loading, empty, and auth-error screens before wiring full media playback. Done.
 5. Add secure token storage and a concrete `DriveAuthClient`. Done.
-6. Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`.
+6. Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`. Done.
 7. Add a Drive-backed repository that uses stored tokens to list real Drive files.
+8. Replace the sample connection state with token-aware connected/disconnected state.

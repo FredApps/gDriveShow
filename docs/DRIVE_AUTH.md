@@ -32,6 +32,7 @@ Google docs:
 - `EncryptedDriveTokenStore` stores OAuth tokens with AndroidX encrypted shared preferences.
 - `DriveAuthConfig` holds the OAuth client ID and requested scopes.
 - `google_oauth_tv_client_id` is currently blank in `app/src/main/res/values/oauth.xml`.
+- Settings includes a remote-friendly Connect flow that shows the Google user code, verification URL, and approval-check action.
 
 After creating the Google Cloud OAuth client, put the TV/limited-input client ID in `google_oauth_tv_client_id`. Do not add a client secret; this flow is for installed devices that cannot keep secrets.
 
@@ -63,4 +64,4 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - Create a Google Cloud OAuth client of type `TVs and Limited Input devices`.
 - Enable the Google Drive API.
 - Decide final scope. Prefer the narrowest read-only scope that supports browsing the intended Drive content.
-- Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`.
+- Implement the real Drive file-listing repository after the client ID is available.

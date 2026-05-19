@@ -1,6 +1,8 @@
 package com.fredapps.gdriveshow
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -42,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +58,12 @@ import com.fredapps.gdriveshow.drive.isPlayable
 import com.fredapps.gdriveshow.drive.label
 import com.fredapps.gdriveshow.drive.statusLabel
 import com.fredapps.gdriveshow.drive.subtitle
+import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationPrompt
+import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationResult
+import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationStartResult
+import com.fredapps.gdriveshow.drive.auth.DriveAuthConfig
+import com.fredapps.gdriveshow.drive.auth.EncryptedDriveTokenStore
+import com.fredapps.gdriveshow.drive.auth.GoogleDeviceCodeAuthClient
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,6 +92,19 @@ private enum class SortMode(val label: String) {
     Name("Name"),
 }
 
+private sealed interface AuthUiState {
+    data object Idle : AuthUiState
+    data class Working(val message: String) : AuthUiState
+    data class Prompt(
+        val prompt: DeviceAuthorizationPrompt,
+        val message: String = "Open the URL on your phone or computer and enter the code.",
+    ) : AuthUiState
+
+    data class Authorized(val message: String) : AuthUiState
+    data class SignedOut(val message: String) : AuthUiState
+    data class Failed(val message: String) : AuthUiState
+}
+
 @Composable
 private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveRepository()) {
     MaterialTheme(
@@ -94,6 +116,13 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             onSurface = Color.White,
         ),
     ) {
+        val context = LocalContext.current
+        val authClient = remember(context) {
+            GoogleDeviceCodeAuthClient(
+                config = DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id)),
+                tokenStore = EncryptedDriveTokenStore(context.applicationContext),
+            )
+        }
         val connectionState = remember { repository.connectionState() }
         val contentState = remember { repository.rootContent() }
         val driveItems = (contentState as? DriveContentState.Ready)?.items.orEmpty()
@@ -104,6 +133,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         var selectedItemId by remember { mutableStateOf(driveItems.firstOrNull()?.id) }
         var slideshowIndex by remember { mutableIntStateOf(0) }
         var showingSlideshow by remember { mutableStateOf(false) }
+        var authUiState by remember { mutableStateOf<AuthUiState>(AuthUiState.Idle) }
 
         val visibleItems = remember(filter, sortMode, driveItems) {
             driveItems
@@ -167,7 +197,60 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                             },
                         )
 
-                        AppSection.Settings -> SettingsScreen(connectionState = connectionState)
+                        AppSection.Settings -> SettingsScreen(
+                            connectionState = connectionState,
+                            authState = authUiState,
+                            onConnect = {
+                                authUiState = AuthUiState.Working("Requesting a Google Drive sign-in code")
+                                runAuthRequest(
+                                    request = { authClient.startAuthorization() },
+                                    onResult = { result ->
+                                        authUiState = when (result) {
+                                            is DeviceAuthorizationStartResult.Prompt -> AuthUiState.Prompt(result.prompt)
+                                            is DeviceAuthorizationStartResult.Failed -> AuthUiState.Failed(result.message)
+                                        }
+                                    },
+                                )
+                            },
+                            onCheckAuthorization = { prompt ->
+                                authUiState = AuthUiState.Working("Checking Google Drive authorization")
+                                runAuthRequest(
+                                    request = { authClient.pollAuthorization(prompt) },
+                                    onResult = { result ->
+                                        authUiState = when (result) {
+                                            DeviceAuthorizationResult.AuthorizationPending -> AuthUiState.Prompt(
+                                                prompt = prompt,
+                                                message = "Still waiting for approval. Finish the Google prompt, then check again.",
+                                            )
+
+                                            DeviceAuthorizationResult.SlowDown -> AuthUiState.Prompt(
+                                                prompt = prompt,
+                                                message = "Google asked us to slow down. Wait ${prompt.pollIntervalSeconds} seconds, then check again.",
+                                            )
+
+                                            is DeviceAuthorizationResult.Authorized -> AuthUiState.Authorized(
+                                                "Google Drive authorization succeeded. Real Drive browsing is the next repository slice.",
+                                            )
+
+                                            is DeviceAuthorizationResult.Denied -> AuthUiState.Failed(result.message)
+                                            is DeviceAuthorizationResult.Failed -> AuthUiState.Failed(result.message)
+                                        }
+                                    },
+                                )
+                            },
+                            onCancelAuthorization = { authUiState = AuthUiState.Idle },
+                            onSignOut = {
+                                runAuthRequest(
+                                    request = {
+                                        authClient.signOut()
+                                        Unit
+                                    },
+                                    onResult = {
+                                        authUiState = AuthUiState.SignedOut("Stored Google Drive tokens were cleared.")
+                                    },
+                                )
+                            },
+                        )
                     }
                 }
             }
@@ -636,7 +719,14 @@ private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) 
 }
 
 @Composable
-private fun SettingsScreen(connectionState: DriveConnectionState) {
+private fun SettingsScreen(
+    connectionState: DriveConnectionState,
+    authState: AuthUiState,
+    onConnect: () -> Unit,
+    onCheckAuthorization: (DeviceAuthorizationPrompt) -> Unit,
+    onCancelAuthorization: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxSize()) {
         PageHeader(
             title = "Settings",
@@ -671,6 +761,14 @@ private fun SettingsScreen(connectionState: DriveConnectionState) {
                 modifier = Modifier.weight(1f),
             )
         }
+        Spacer(modifier = Modifier.height(22.dp))
+        DriveAuthPanel(
+            authState = authState,
+            onConnect = onConnect,
+            onCheckAuthorization = onCheckAuthorization,
+            onCancelAuthorization = onCancelAuthorization,
+            onSignOut = onSignOut,
+        )
     }
 }
 
@@ -681,6 +779,144 @@ private val DriveConnectionState.settingsLabel: String
         is DriveConnectionState.Connected -> accountLabel
         is DriveConnectionState.Failed -> "Error"
     }
+
+@Composable
+private fun DriveAuthPanel(
+    authState: AuthUiState,
+    onConnect: () -> Unit,
+    onCheckAuthorization: (DeviceAuthorizationPrompt) -> Unit,
+    onCancelAuthorization: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF191D21))
+            .padding(22.dp),
+    ) {
+        Text(text = "Google Drive Connection", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        when (authState) {
+            AuthUiState.Idle -> {
+                Text(
+                    text = "Connect with Google's TV sign-in flow. The app will show a code to approve on another device.",
+                    color = Color(0xFFCFD7DE),
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                ButtonRow {
+                    PrimaryActionButton(label = "Connect", onClick = onConnect)
+                    SecondaryActionButton(label = "Clear tokens", onClick = onSignOut)
+                }
+            }
+
+            is AuthUiState.Working -> {
+                Text(text = authState.message, color = Color(0xFFCFD7DE), fontSize = 15.sp)
+            }
+
+            is AuthUiState.Prompt -> {
+                Text(text = authState.message, color = Color(0xFFCFD7DE), fontSize = 15.sp, lineHeight = 21.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                CodeDisplay(label = "Code", value = authState.prompt.userCode)
+                CodeDisplay(label = "URL", value = authState.prompt.verificationUrl)
+                authState.prompt.verificationUrlComplete?.let {
+                    CodeDisplay(label = "Direct URL", value = it)
+                }
+                Text(
+                    text = "Expires in ${authState.prompt.expiresInSeconds / 60} minutes.",
+                    color = Color(0xFF98A2AD),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                ButtonRow {
+                    PrimaryActionButton(
+                        label = "Check approval",
+                        onClick = { onCheckAuthorization(authState.prompt) },
+                    )
+                    SecondaryActionButton(label = "Cancel", onClick = onCancelAuthorization)
+                }
+            }
+
+            is AuthUiState.Authorized -> {
+                Text(text = authState.message, color = Color(0xFFCFD7DE), fontSize = 15.sp, lineHeight = 21.sp)
+                Spacer(modifier = Modifier.height(18.dp))
+                ButtonRow {
+                    SecondaryActionButton(label = "Clear tokens", onClick = onSignOut)
+                }
+            }
+
+            is AuthUiState.SignedOut -> {
+                Text(text = authState.message, color = Color(0xFFCFD7DE), fontSize = 15.sp, lineHeight = 21.sp)
+                Spacer(modifier = Modifier.height(18.dp))
+                ButtonRow {
+                    PrimaryActionButton(label = "Connect", onClick = onConnect)
+                }
+            }
+
+            is AuthUiState.Failed -> {
+                Text(text = authState.message, color = Color(0xFFFFB4A8), fontSize = 15.sp, lineHeight = 21.sp)
+                Spacer(modifier = Modifier.height(18.dp))
+                ButtonRow {
+                    PrimaryActionButton(label = "Try again", onClick = onConnect)
+                    SecondaryActionButton(label = "Cancel", onClick = onCancelAuthorization)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeDisplay(label: String, value: String) {
+    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+        Text(text = label, color = Color(0xFF98A2AD), fontSize = 13.sp)
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = if (label == "Code") 30.sp else 17.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = if (label == "Code") 34.sp else 22.sp,
+        )
+    }
+}
+
+@Composable
+private fun ButtonRow(content: @Composable () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        content()
+    }
+}
+
+@Composable
+private fun PrimaryActionButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF72D6C9),
+            contentColor = Color(0xFF101214),
+        ),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun SecondaryActionButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF303941),
+            contentColor = Color.White,
+        ),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    }
+}
 
 @Composable
 private fun SettingsGroup(
@@ -751,6 +987,15 @@ private fun SlideshowScreen(
             }
         }
     }
+}
+
+private fun <T> runAuthRequest(request: () -> T, onResult: (T) -> Unit) {
+    Thread {
+        val result = request()
+        Handler(Looper.getMainLooper()).post {
+            onResult(result)
+        }
+    }.start()
 }
 
 private fun Int.floorMod(size: Int): Int = if (size == 0) 0 else ((this % size) + size) % size
