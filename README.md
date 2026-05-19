@@ -37,6 +37,70 @@ The fullscreen viewer handles TV remote left/right/back/select keys and shows vi
 
 Drive folder metadata is cached locally after successful loads and reused if the next Drive request fails. Drive thumbnails are cached in the app cache directory after first load.
 
+
+## Installation on Sony Android TV
+
+### Prerequisites
+
+- Sony Android TV (Android 5.0 or higher)
+- - Developer Mode enabled on the TV
+  - - USB cable or network connectivity for app transfer
+   
+    - ### Enabling Developer Mode
+   
+    - 1. From the TV remote, press the **Home** button to go to the home screen
+      2. 2. Navigate to **Settings** > **About** > **Build** (the exact path may vary by TV model)
+         3. 3. Press the OK button on the remote to select "Build" and scroll down to find **Build Number**
+            4. 4. Press OK multiple times on **Build Number** until you see a message saying "Developer mode is enabled"
+               5.    - Typically this requires 7-10 presses
+                     - 5. Press the Back button to return, then navigate to **Settings** > **Developer Options**
+                       6. 6. Enable **USB Debugging** and **ADB (Android Debug Bridge)** if available
+                         
+                          7. ### Installing the App
+                         
+                          8. #### Option 1: Via USB Debugging (Recommended)
+                         
+                          9. 1. Enable USB debugging on the TV (see above)
+                             2. 2. Connect your TV to a computer using a USB cable
+                                3. 3. On your computer, open a terminal/command prompt and run:
+                                   4.    ```
+                                            adb connect <TV_IP_ADDRESS>
+                                            adb install path/to/gDriveShow.apk
+                                            ```
+                                         4. The app will install automatically
+                                     
+                                         5. #### Option 2: Via Network ADB
+                                     
+                                         6. 1. Find your TV's IP address in **Settings** > **Network** > **About**
+                                            2. 2. On your computer, run:
+                                               3.    ```
+                                                        adb connect <TV_IP_ADDRESS>:5555
+                                                        adb install path/to/gDriveShow.apk
+                                                        ```
+
+                                                     #### Option 3: Via USB Storage (if ADB not available)
+
+                                                 1. Copy the APK file to a USB drive
+                                                 2. 2. Connect the USB drive to your TV
+                                                    3. 3. Use the TV's file manager to navigate to the USB drive and select the APK file
+                                                       4. 4. The TV will prompt you to install the app
+                                                          5. 5. Press OK to confirm the installation
+                                                            
+                                                             6. ### Launching the App
+                                                            
+                                                             7. 1. After installation, the app will appear in your **Apps** menu
+                                                                2. 2. Use your TV remote to navigate to **Apps** > **gDriveShow**
+                                                                   3. 3. Press OK to launch the app
+                                                                      4. 4. On first launch, you may be prompted to grant permissions - allow access as needed
+                                                                        
+                                                                         5. ### Setting Up Google Drive Access
+                                                                        
+                                                                         6. 1. Once the app is open, navigate to **Settings**
+                                                                            2. 2. Select **Google Account** and follow the OAuth flow to authorize access to your Google Drive
+                                                                               3. 3. Select your startup folder from the Browse screen
+                                                                                  4. 4. You can now browse and view your Google Drive content
+                                                                                    
+                                                                                     5. 
 ## Local Setup
 
 This checkout includes a local `.tools` folder containing the JDK, Android SDK, and Gradle. This folder is Git-ignored because it contains large machine-specific binaries.
