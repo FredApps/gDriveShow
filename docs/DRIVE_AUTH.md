@@ -61,6 +61,7 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - `DriveFileMapper` keeps Google API DTOs out of Compose UI.
 - Compose screens consume `DriveConnectionState` and `DriveContentState`.
 - `DriveMetadataCache` stores the last loaded folder metadata and lets the UI show cached content if a later network request fails.
+- `DriveThumbnailCache` stores fetched Drive thumbnails in the app cache directory and is cleared on sign-out.
 
 ## Open Setup Items
 

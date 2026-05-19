@@ -80,6 +80,7 @@ import com.fredapps.gdriveshow.drive.GoogleDriveRepository
 import com.fredapps.gdriveshow.drive.AppPreferences
 import com.fredapps.gdriveshow.drive.DriveMediaLoader
 import com.fredapps.gdriveshow.drive.DriveMetadataCache
+import com.fredapps.gdriveshow.drive.DriveThumbnailCache
 import com.fredapps.gdriveshow.drive.ImageLoadResult
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
 import com.fredapps.gdriveshow.drive.StartupFolder
@@ -163,6 +164,9 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         val metadataCache = remember(context) {
             DriveMetadataCache(context.applicationContext)
         }
+        val thumbnailCache = remember(context) {
+            DriveThumbnailCache(context.applicationContext)
+        }
         val authConfig = remember(context) {
             DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id))
         }
@@ -183,12 +187,13 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                 metadataCache = metadataCache,
             )
         }
-        val mediaLoader = remember(authConfig, tokenStore) {
+        val mediaLoader = remember(authConfig, tokenStore, thumbnailCache) {
             DriveMediaLoader(
                 DriveAccessTokenProvider(
                     config = authConfig,
                     tokenStore = tokenStore,
                 ),
+                thumbnailCache = thumbnailCache,
             )
         }
         var connectionState by remember { mutableStateOf(repository.connectionState()) }
@@ -398,6 +403,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                     request = {
                                         authClient.signOut()
                                         metadataCache.clear()
+                                        thumbnailCache.clear()
                                         Unit
                                     },
                                     onResult = {

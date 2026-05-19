@@ -35,7 +35,7 @@ Images and videos can open in a fullscreen viewer with previous/next navigation.
 
 The fullscreen viewer handles TV remote left/right/back/select keys and shows video buffering, ready, playing, paused, ended, and error states. The slideshow screen now auto-advances images and videos, supports pause/resume, and plays mixed Drive media.
 
-Drive folder metadata is cached locally after successful loads and reused if the next Drive request fails.
+Drive folder metadata is cached locally after successful loads and reused if the next Drive request fails. Drive thumbnails are cached in the app cache directory after first load.
 
 ## Local Setup
 

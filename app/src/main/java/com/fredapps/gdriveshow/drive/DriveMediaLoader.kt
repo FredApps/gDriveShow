@@ -10,6 +10,7 @@ import java.net.URL
 
 class DriveMediaLoader(
     private val accessTokenProvider: DriveAccessTokenProvider,
+    private val thumbnailCache: DriveThumbnailCache? = null,
 ) {
     fun loadImage(item: DriveItem): ImageLoadResult {
         val mediaUrl = item.mediaUrl ?: return ImageLoadResult.Unavailable
@@ -18,7 +19,12 @@ class DriveMediaLoader(
 
     fun loadThumbnail(item: DriveItem): ImageLoadResult {
         val thumbnailUrl = item.thumbnailUrl ?: return ImageLoadResult.Unavailable
-        return loadBitmap(thumbnailUrl)
+        thumbnailCache?.read(item)?.let { return ImageLoadResult.Ready(it) }
+        val result = loadBitmap(thumbnailUrl)
+        if (result is ImageLoadResult.Ready) {
+            thumbnailCache?.write(item, result.bitmap)
+        }
+        return result
     }
 
     private fun loadBitmap(url: String): ImageLoadResult {

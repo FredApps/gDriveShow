@@ -36,7 +36,7 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 ## Later Scope
 
 - Folder pinning for quick launch.
-- Full offline thumbnail byte cache.
+- Cache limits and eviction controls.
 - Exclude/include filters by MIME type.
 - Ambient schedule rules.
 - Remote-friendly settings export/import.
@@ -79,7 +79,7 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 - Persistent selected folder.
 - Settings screen.
 - Loading, empty, and error states.
-- Metadata cache and thumbnail loading.
+- Metadata cache and thumbnail byte cache.
 - Release build script and conditional signing config.
 - Unit tests for Drive metadata mapping.
 - TV-safe typography and focus QA.
@@ -91,7 +91,8 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 - `build-release.ps1` builds the release APK and uses signing environment variables when present.
 - `DriveRepository` is the boundary for real Google Drive data.
 - `SampleDriveRepository` still feeds the app when no Google Drive tokens exist.
-- `GoogleDriveRepository` loads Drive folder content, thumbnails, shared-drive entries, and caches folder metadata.
+- `GoogleDriveRepository` loads Drive folder content, thumbnail links, shared-drive entries, and caches folder metadata.
+- `DriveThumbnailCache` stores fetched thumbnail bitmaps in the app cache directory.
 
 ## Next Engineering Slice
 
@@ -110,7 +111,7 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 13. Add playback error states, buffering indicators, and TV remote key handling. Done.
 14. Add slideshow timing, pause/resume, and mixed image/video advancement. Done.
 15. Add grid thumbnails from Drive `thumbnailLink`. Done.
-16. Add metadata caching and cached fallback on Drive errors. Done.
+16. Add metadata caching, thumbnail caching, and cached fallback on Drive errors. Done.
 17. Add shared drive root entries and all-drives file listing flags. Done.
 18. Add release build/signing pipeline and first unit tests. Done.
 
