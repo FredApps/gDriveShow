@@ -1,0 +1,32 @@
+# gDriveShow
+
+Android TV app for browsing and displaying Google Drive images and videos from the couch.
+
+## Goals
+
+- Browse Google Drive folders, images, and videos with D-pad-friendly navigation.
+- Play videos and preview images from a polished TV-first surface.
+- Run image slideshows with configurable timing and playback controls.
+- Keep Drive access, playback, and UI separated so the app can grow without becoming tangled.
+
+## Initial Shape
+
+- `app/` contains the Android TV application scaffold.
+- `docs/PRODUCT_PLAN.md` captures the staged product plan.
+- `docs/DESIGN.md` captures the first UX and visual design direction.
+
+The first implementation uses sample content and domain models so the browse/slideshow experience can be designed before Google Drive auth and media streaming are wired in.
+
+## Local Setup
+
+This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
+
+Build locally with:
+
+```powershell
+.\build-debug.ps1
+```
+
+## Repository
+
+Private GitHub repository: https://github.com/FredApps/gDriveShow
