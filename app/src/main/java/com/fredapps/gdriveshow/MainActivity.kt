@@ -1,11 +1,9 @@
 package com.fredapps.gdriveshow
 
-import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -35,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,43 +46,42 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fredapps.gdriveshow.drive.DriveItem
+import com.fredapps.gdriveshow.drive.DriveMediaType
+import com.fredapps.gdriveshow.drive.SampleDriveRepository
+import com.fredapps.gdriveshow.drive.isPlayable
+import com.fredapps.gdriveshow.drive.label
+import com.fredapps.gdriveshow.drive.subtitle
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            GDriveShowApp(
-                onExit = { finish() },
-            )
+            GDriveShowApp()
         }
     }
 }
 
-private enum class DriveMediaType {
-    Folder,
-    Image,
-    Video,
+private enum class AppSection(val label: String) {
+    Drive("Drive"),
+    Slideshows("Slideshows"),
+    Settings("Settings"),
 }
 
-private data class DriveItem(
-    val id: String,
-    val title: String,
-    val subtitle: String,
-    val type: DriveMediaType,
-    val accent: Color,
-)
+private enum class MediaFilter(val label: String) {
+    All("All"),
+    Folders("Folders"),
+    Images("Images"),
+    Videos("Videos"),
+}
 
-private val sampleItems = listOf(
-    DriveItem("1", "Family Photos", "42 images", DriveMediaType.Folder, Color(0xFF72D6C9)),
-    DriveItem("2", "Summer Trip", "18 images", DriveMediaType.Image, Color(0xFFFFD166)),
-    DriveItem("3", "Cabin Weekend", "12 videos", DriveMediaType.Video, Color(0xFFFF8A65)),
-    DriveItem("4", "Receipts Archive", "Drive folder", DriveMediaType.Folder, Color(0xFF9FA8DA)),
-    DriveItem("5", "Living Room Loop", "Slideshow ready", DriveMediaType.Image, Color(0xFFA5D6A7)),
-    DriveItem("6", "Drone Clips", "4K video", DriveMediaType.Video, Color(0xFF90CAF9)),
-)
+private enum class SortMode(val label: String) {
+    Recent("Recent"),
+    Name("Name"),
+}
 
 @Composable
-private fun GDriveShowApp(onExit: () -> Unit) {
+private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveRepository()) {
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(
             background = Color(0xFF101214),
@@ -94,37 +91,86 @@ private fun GDriveShowApp(onExit: () -> Unit) {
             onSurface = Color.White,
         ),
     ) {
-        var selectedItem by remember { mutableStateOf(sampleItems.first()) }
-        var isSlideshow by remember { mutableStateOf(false) }
+        val driveItems = remember { repository.rootItems() }
+        val slideshowItems = remember { repository.slideshowCandidates() }
+        var section by remember { mutableStateOf(AppSection.Drive) }
+        var filter by remember { mutableStateOf(MediaFilter.All) }
+        var sortMode by remember { mutableStateOf(SortMode.Recent) }
+        var selectedItem by remember { mutableStateOf(driveItems.first()) }
+        var slideshowIndex by remember { mutableIntStateOf(0) }
+        var showingSlideshow by remember { mutableStateOf(false) }
 
-        Surface(
-            color = MaterialTheme.colorScheme.background,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            if (isSlideshow) {
+        val visibleItems = remember(filter, sortMode, driveItems) {
+            driveItems
+                .filter { item ->
+                    when (filter) {
+                        MediaFilter.All -> true
+                        MediaFilter.Folders -> item.type == DriveMediaType.Folder
+                        MediaFilter.Images -> item.type == DriveMediaType.Image
+                        MediaFilter.Videos -> item.type == DriveMediaType.Video
+                    }
+                }
+                .let { filtered ->
+                    when (sortMode) {
+                        SortMode.Recent -> filtered
+                        SortMode.Name -> filtered.sortedBy { it.title }
+                    }
+                }
+        }
+
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+            if (showingSlideshow) {
                 SlideshowScreen(
-                    item = selectedItem,
-                    onBack = { isSlideshow = false },
-                    onExit = onExit,
+                    items = slideshowItems,
+                    currentIndex = slideshowIndex,
+                    onPrevious = { slideshowIndex = (slideshowIndex - 1).floorMod(slideshowItems.size) },
+                    onNext = { slideshowIndex = (slideshowIndex + 1).floorMod(slideshowItems.size) },
+                    onBack = { showingSlideshow = false },
                 )
             } else {
-                BrowseScreen(
-                    selectedItem = selectedItem,
-                    items = sampleItems,
-                    onItemSelected = { selectedItem = it },
-                    onStartSlideshow = { isSlideshow = true },
-                )
+                AppShell(
+                    section = section,
+                    onSectionSelected = { section = it },
+                    driveStatus = "Sample Drive data",
+                ) {
+                    when (section) {
+                        AppSection.Drive -> BrowseScreen(
+                            selectedItem = selectedItem,
+                            items = visibleItems,
+                            filter = filter,
+                            sortMode = sortMode,
+                            onFilterChanged = { filter = it },
+                            onSortChanged = { sortMode = it },
+                            onItemSelected = { selectedItem = it },
+                            onStartSlideshow = {
+                                val index = slideshowItems.indexOfFirst { it.id == selectedItem.id }
+                                slideshowIndex = if (index >= 0) index else 0
+                                showingSlideshow = true
+                            },
+                        )
+
+                        AppSection.Slideshows -> SlideshowLibraryScreen(
+                            items = slideshowItems,
+                            onStart = { item ->
+                                slideshowIndex = slideshowItems.indexOf(item).coerceAtLeast(0)
+                                showingSlideshow = true
+                            },
+                        )
+
+                        AppSection.Settings -> SettingsScreen()
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BrowseScreen(
-    selectedItem: DriveItem,
-    items: List<DriveItem>,
-    onItemSelected: (DriveItem) -> Unit,
-    onStartSlideshow: () -> Unit,
+private fun AppShell(
+    section: AppSection,
+    onSectionSelected: (AppSection) -> Unit,
+    driveStatus: String,
+    content: @Composable () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -133,27 +179,27 @@ private fun BrowseScreen(
             .padding(horizontal = 48.dp, vertical = 36.dp),
         horizontalArrangement = Arrangement.spacedBy(32.dp),
     ) {
-        Sidebar()
-        ContentGrid(
-            items = items,
-            selectedItem = selectedItem,
-            onItemSelected = onItemSelected,
-            modifier = Modifier.weight(1f),
+        Sidebar(
+            selectedSection = section,
+            driveStatus = driveStatus,
+            onSectionSelected = onSectionSelected,
         )
-        DetailPanel(
-            selectedItem = selectedItem,
-            onStartSlideshow = onStartSlideshow,
-            modifier = Modifier.width(380.dp),
-        )
+        Box(modifier = Modifier.weight(1f)) {
+            content()
+        }
     }
 }
 
 @Composable
-private fun Sidebar() {
+private fun Sidebar(
+    selectedSection: AppSection,
+    driveStatus: String,
+    onSectionSelected: (AppSection) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .width(168.dp),
+            .width(178.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column {
@@ -164,12 +210,16 @@ private fun Sidebar() {
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(40.dp))
-            SidebarItem("Drive", true)
-            SidebarItem("Slideshows", false)
-            SidebarItem("Settings", false)
+            AppSection.entries.forEach { section ->
+                SidebarItem(
+                    label = section.label,
+                    selected = selectedSection == section,
+                    onClick = { onSectionSelected(section) },
+                )
+            }
         }
         Text(
-            text = "Google Drive not connected",
+            text = driveStatus,
             color = Color(0xFF98A2AD),
             fontSize = 13.sp,
             lineHeight = 17.sp,
@@ -178,67 +228,155 @@ private fun Sidebar() {
 }
 
 @Composable
-private fun SidebarItem(label: String, selected: Boolean) {
+private fun SidebarItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+
     Text(
         text = label,
-        color = if (selected) Color.White else Color(0xFF98A2AD),
+        color = if (selected || focused) Color.White else Color(0xFF98A2AD),
         fontSize = 18.sp,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
+            .clip(shape)
+            .background(if (selected) Color(0xFF222A30) else Color.Transparent)
+            .border(
+                BorderStroke(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent),
+                shape,
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BrowseScreen(
+    selectedItem: DriveItem,
+    items: List<DriveItem>,
+    filter: MediaFilter,
+    sortMode: SortMode,
+    onFilterChanged: (MediaFilter) -> Unit,
+    onSortChanged: (SortMode) -> Unit,
+    onItemSelected: (DriveItem) -> Unit,
+    onStartSlideshow: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(32.dp), modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            PageHeader(
+                title = "Browse Drive",
+                subtitle = "Folders, photos, and videos optimized for TV navigation",
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(bottom = 18.dp),
+            ) {
+                MediaFilter.entries.forEach { option ->
+                    PillButton(
+                        label = option.label,
+                        selected = filter == option,
+                        onClick = { onFilterChanged(option) },
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                SortMode.entries.forEach { option ->
+                    PillButton(
+                        label = "Sort: ${option.label}",
+                        selected = sortMode == option,
+                        onClick = { onSortChanged(option) },
+                    )
+                }
+            }
+            ContentGrid(
+                items = items,
+                selectedItem = selectedItem,
+                onItemSelected = onItemSelected,
+            )
+        }
+        DetailPanel(
+            selectedItem = selectedItem,
+            onStartSlideshow = onStartSlideshow,
+            modifier = Modifier.width(392.dp),
+        )
+    }
+}
+
+@Composable
+private fun PageHeader(title: String, subtitle: String) {
+    Text(
+        text = title,
+        color = Color.White,
+        fontSize = 34.sp,
+        fontWeight = FontWeight.Bold,
+    )
+    Text(
+        text = subtitle,
+        color = Color(0xFFB0BAC5),
+        fontSize = 16.sp,
+        modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+    )
+}
+
+@Composable
+private fun PillButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    val background = when {
+        selected -> Color(0xFF72D6C9)
+        focused -> Color(0xFF2B333A)
+        else -> Color(0xFF191D21)
+    }
+    val foreground = if (selected) Color(0xFF101214) else Color.White
+
+    Text(
+        text = label,
+        color = foreground,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(shape)
+            .background(background)
+            .border(BorderStroke(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF303941)), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
 @Composable
 private fun ContentGrid(
     items: List<DriveItem>,
     selectedItem: DriveItem,
     onItemSelected: (DriveItem) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxHeight()) {
-        Text(
-            text = "Browse Drive",
-            color = Color.White,
-            fontSize = 34.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = "Folders, photos, and videos optimized for TV navigation",
-            color = Color(0xFFB0BAC5),
-            fontSize = 16.sp,
-            modifier = Modifier.padding(top = 8.dp, bottom = 28.dp),
-        )
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            items(items, key = { it.id }) { item ->
-                DriveCard(
-                    item = item,
-                    selected = selectedItem.id == item.id,
-                    onSelected = { onItemSelected(item) },
-                )
-            }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        modifier = Modifier.fillMaxHeight(),
+    ) {
+        items(items, key = { it.id }) { item ->
+            DriveCard(
+                item = item,
+                selected = selectedItem.id == item.id,
+                onSelected = { onItemSelected(item) },
+            )
         }
     }
 }
 
 @Composable
-private fun DriveCard(
-    item: DriveItem,
-    selected: Boolean,
-    onSelected: () -> Unit,
-) {
+private fun DriveCard(item: DriveItem, selected: Boolean, onSelected: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
+    val accent = Color(item.accentColor)
     val borderColor = when {
         focused -> Color.White
-        selected -> item.accent
+        selected -> accent
         else -> Color(0xFF2E353B)
     }
 
@@ -252,29 +390,7 @@ private fun DriveCard(
             .clickable(onClick = onSelected)
             .padding(14.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 10f)
-                .clip(RoundedCornerShape(6.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(item.accent, Color(0xFF273039)),
-                    ),
-                ),
-        ) {
-            Text(
-                text = item.type.label,
-                color = Color(0xFF101214),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(10.dp)
-                    .background(Color.White.copy(alpha = 0.82f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
+        MediaArtwork(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f))
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = item.title,
@@ -295,6 +411,28 @@ private fun DriveCard(
 }
 
 @Composable
+private fun MediaArtwork(item: DriveItem, modifier: Modifier = Modifier) {
+    val accent = Color(item.accentColor)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Brush.linearGradient(colors = listOf(accent, Color(0xFF273039)))),
+    ) {
+        Text(
+            text = item.type.label,
+            color = Color(0xFF101214),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp)
+                .background(Color.White.copy(alpha = 0.86f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
 private fun DetailPanel(
     selectedItem: DriveItem,
     onStartSlideshow: () -> Unit,
@@ -307,12 +445,9 @@ private fun DetailPanel(
             .background(Color(0xFF191D21))
             .padding(24.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 11f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Brush.linearGradient(listOf(selectedItem.accent, Color(0xFF11161B)))),
+        MediaArtwork(
+            item = selectedItem,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 11f),
         )
         Spacer(modifier = Modifier.height(22.dp))
         Text(
@@ -323,13 +458,13 @@ private fun DetailPanel(
             lineHeight = 32.sp,
         )
         Text(
-            text = selectedItem.subtitle,
+            text = selectedItem.modifiedLabel,
             color = Color(0xFFB0BAC5),
-            fontSize = 16.sp,
+            fontSize = 15.sp,
             modifier = Modifier.padding(top = 8.dp),
         )
         Text(
-            text = "Preview, slideshow, and video playback controls will attach here once Drive media loading is wired in.",
+            text = selectedItem.description,
             color = Color(0xFFCFD7DE),
             fontSize = 15.sp,
             lineHeight = 21.sp,
@@ -338,74 +473,154 @@ private fun DetailPanel(
         Spacer(modifier = Modifier.weight(1f))
         Button(
             onClick = onStartSlideshow,
+            enabled = selectedItem.isPlayable,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF72D6C9),
                 contentColor = Color(0xFF101214),
+                disabledContainerColor = Color(0xFF303941),
+                disabledContentColor = Color(0xFF8C98A3),
             ),
             shape = RoundedCornerShape(6.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Start slideshow", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = if (selectedItem.isPlayable) "Start slideshow" else "Open folder",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        PageHeader(
+            title = "Slideshows",
+            subtitle = "Playable image and video sets discovered in the selected Drive folder",
+        )
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(items, key = { it.id }) { item ->
+                DriveCard(item = item, selected = false, onSelected = { onStart(item) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen() {
+    Column(modifier = Modifier.fillMaxSize()) {
+        PageHeader(
+            title = "Settings",
+            subtitle = "TV-safe controls that will back Google Drive, playback, and cache behavior",
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(
+                title = "Drive",
+                rows = listOf(
+                    "Account" to "Not connected",
+                    "Starting folder" to "Root folder",
+                    "Shared drives" to "Later milestone",
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            SettingsGroup(
+                title = "Slideshow",
+                rows = listOf(
+                    "Interval" to "8 seconds",
+                    "Image fit" to "Contain",
+                    "Video behavior" to "Continue to next",
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            SettingsGroup(
+                title = "Cache",
+                rows = listOf(
+                    "Thumbnails" to "Enabled",
+                    "Offline metadata" to "Later milestone",
+                    "Cache size" to "512 MB",
+                ),
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    rows: List<Pair<String, String>>,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF191D21))
+            .padding(20.dp),
+    ) {
+        Text(text = title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        rows.forEach { (label, value) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(text = label, color = Color(0xFFCFD7DE), fontSize = 15.sp)
+                Text(text = value, color = Color(0xFF98A2AD), fontSize = 15.sp, maxLines = 1)
+            }
         }
     }
 }
 
 @Composable
 private fun SlideshowScreen(
-    item: DriveItem,
+    items: List<DriveItem>,
+    currentIndex: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
     onBack: () -> Unit,
-    onExit: () -> Unit,
 ) {
+    val item = items.getOrNull(currentIndex) ?: return
+    val accent = Color(item.accentColor)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.radialGradient(listOf(item.accent, Color.Black))),
+            .background(Brush.radialGradient(listOf(accent, Color.Black))),
     ) {
         Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 64.dp),
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Text(text = item.title, color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = item.title,
-                color = Color.White,
-                fontSize = 46.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Slideshow preview mode",
+                text = "${currentIndex + 1} of ${items.size} - ${item.type.label}",
                 color = Color.White.copy(alpha = 0.78f),
                 fontSize = 20.sp,
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
         Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 40.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Button(
-                onClick = onBack,
-                shape = RoundedCornerShape(6.dp),
-            ) {
-                Text("Back")
+            Button(onClick = onPrevious, shape = RoundedCornerShape(6.dp)) {
+                Text("Previous")
             }
-            Button(
-                onClick = onExit,
-                shape = RoundedCornerShape(6.dp),
-            ) {
-                Text("Exit")
+            Button(onClick = onNext, shape = RoundedCornerShape(6.dp)) {
+                Text("Next")
+            }
+            Button(onClick = onBack, shape = RoundedCornerShape(6.dp)) {
+                Text("Back")
             }
         }
     }
 }
 
-private val DriveMediaType.label: String
-    get() = when (this) {
-        DriveMediaType.Folder -> "Folder"
-        DriveMediaType.Image -> "Image"
-        DriveMediaType.Video -> "Video"
-    }
+private fun Int.floorMod(size: Int): Int = if (size == 0) 0 else ((this % size) + size) % size
 

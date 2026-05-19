@@ -54,15 +54,20 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 
 ### Milestone 1: TV Shell
 
-- App launches from Android TV home.
-- Browse screen shows folders/media from local sample data.
-- Slideshow preview screen works with D-pad controls.
+- App launches from Android TV home. Done.
+- Browse screen shows folders/media from local sample data. Done.
+- Slideshow preview screen works with D-pad controls. Done.
+- Section navigation for Drive, Slideshows, and Settings. Done.
+- Browse filters and sorting over sample media. Done.
 
 ### Milestone 2: Drive Read Access
 
 - User can sign in.
 - App lists Drive folders and supported media files.
 - Browse screen consumes real Drive data.
+- Replace `SampleDriveRepository` with a Drive-backed implementation behind the existing `DriveRepository` interface.
+- Add connected, disconnected, loading, empty, and error states to the app shell.
+- Keep the sample repository available for emulator/demo builds.
 
 ### Milestone 3: Playback
 
@@ -77,3 +82,16 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 - Loading, empty, and error states.
 - TV-safe typography and focus QA.
 
+## Current Implementation Notes
+
+- The app has a project-local toolchain copied from `WatchTalk` in `.tools`.
+- `build-debug.ps1` builds the debug APK with that local JDK, Gradle, and Android SDK.
+- `DriveRepository` is the boundary for real Google Drive data.
+- `SampleDriveRepository` currently feeds the TV shell, filters, slideshow library, and slideshow preview.
+
+## Next Engineering Slice
+
+1. Add app state models for Drive connection status and repository loading.
+2. Add Google API dependencies and an auth strategy suitable for Android TV.
+3. Implement a read-only Drive repository that maps Google Drive file metadata to `DriveItem`.
+4. Add loading, empty, and auth-error screens before wiring full media playback.
