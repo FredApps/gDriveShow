@@ -8,6 +8,7 @@ data class DriveFileMetadata(
     val description: String? = null,
     val itemCount: Int? = null,
     val durationLabel: String? = null,
+    val mediaUrl: String? = null,
 )
 
 fun DriveFileMetadata.toDriveItem(): DriveItem {
@@ -27,6 +28,7 @@ fun DriveFileMetadata.toDriveItem(): DriveItem {
         durationLabel = durationLabel,
         modifiedLabel = modifiedLabel,
         accentColor = type.defaultAccentColor,
+        mediaUrl = mediaUrl,
     )
 }
 
@@ -47,4 +49,3 @@ private val DriveMediaType.defaultAccentColor: Long
         DriveMediaType.Image -> 0xFFFFD166
         DriveMediaType.Video -> 0xFFFF8A65
     }
-

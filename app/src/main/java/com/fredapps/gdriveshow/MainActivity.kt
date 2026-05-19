@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.OptIn
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,11 +47,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.PlayerView
 import com.fredapps.gdriveshow.drive.DriveItem
 import com.fredapps.gdriveshow.drive.DriveConnectionState
 import com.fredapps.gdriveshow.drive.DriveContentState
@@ -57,8 +67,11 @@ import com.fredapps.gdriveshow.drive.DriveMediaType
 import com.fredapps.gdriveshow.drive.DriveRepository
 import com.fredapps.gdriveshow.drive.GoogleDriveRepository
 import com.fredapps.gdriveshow.drive.AppPreferences
+import com.fredapps.gdriveshow.drive.DriveMediaLoader
+import com.fredapps.gdriveshow.drive.ImageLoadResult
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
 import com.fredapps.gdriveshow.drive.StartupFolder
+import com.fredapps.gdriveshow.drive.VideoRequest
 import com.fredapps.gdriveshow.drive.isPlayable
 import com.fredapps.gdriveshow.drive.label
 import com.fredapps.gdriveshow.drive.statusLabel
@@ -144,9 +157,18 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             )
         }
         val googleDriveRepository = remember(authConfig, tokenStore) {
+            val accessTokenProvider = DriveAccessTokenProvider(
+                config = authConfig,
+                tokenStore = tokenStore,
+            )
             GoogleDriveRepository(
                 tokenStore = tokenStore,
-                accessTokenProvider = DriveAccessTokenProvider(
+                accessTokenProvider = accessTokenProvider,
+            )
+        }
+        val mediaLoader = remember(authConfig, tokenStore) {
+            DriveMediaLoader(
+                DriveAccessTokenProvider(
                     config = authConfig,
                     tokenStore = tokenStore,
                 ),
@@ -221,6 +243,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                 MediaViewerScreen(
                     items = slideshowItems,
                     currentIndex = mediaViewerIndex,
+                    mediaLoader = mediaLoader,
                     onPrevious = { mediaViewerIndex = (mediaViewerIndex - 1).floorMod(slideshowItems.size) },
                     onNext = { mediaViewerIndex = (mediaViewerIndex + 1).floorMod(slideshowItems.size) },
                     onBack = { showingMediaViewer = false },
@@ -1162,13 +1185,25 @@ private fun SlideshowScreen(
 private fun MediaViewerScreen(
     items: List<DriveItem>,
     currentIndex: Int,
+    mediaLoader: DriveMediaLoader,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onBack: () -> Unit,
 ) {
     val item = items.getOrNull(currentIndex) ?: return
     var videoPlaying by remember(item.id) { mutableStateOf(false) }
+    var imageLoadResult by remember(item.id) { mutableStateOf<ImageLoadResult?>(null) }
     val accent = Color(item.accentColor)
+
+    LaunchedEffect(item.id, item.mediaUrl) {
+        imageLoadResult = null
+        if (item.type == DriveMediaType.Image && item.mediaUrl != null) {
+            runBackground(
+                request = { mediaLoader.loadImage(item) },
+                onResult = { imageLoadResult = it },
+            )
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -1183,33 +1218,21 @@ private fun MediaViewerScreen(
                 .clip(RoundedCornerShape(8.dp))
                 .background(Brush.radialGradient(listOf(accent, Color(0xFF11161B)))),
         ) {
-            Column(
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = item.type.label,
-                    color = Color.White.copy(alpha = 0.74f),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
+            when (item.type) {
+                DriveMediaType.Image -> ImageViewerContent(
+                    item = item,
+                    imageLoadResult = imageLoadResult,
                 )
-                Text(
-                    text = item.title,
-                    color = Color.White,
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 48.sp,
-                    modifier = Modifier.padding(top = 10.dp),
+
+                DriveMediaType.Video -> VideoViewerContent(
+                    item = item,
+                    mediaLoader = mediaLoader,
+                    playWhenReady = videoPlaying,
                 )
-                Text(
-                    text = when (item.type) {
-                        DriveMediaType.Image -> "Fullscreen image preview"
-                        DriveMediaType.Video -> if (videoPlaying) "Video playback running" else "Video playback paused"
-                        DriveMediaType.Folder -> "Folder"
-                    },
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(top = 18.dp),
+
+                DriveMediaType.Folder -> MediaPlaceholderContent(
+                    item = item,
+                    status = "Folder",
                 )
             }
         }
@@ -1251,6 +1274,129 @@ private fun MediaViewerScreen(
                 Text("Back")
             }
         }
+    }
+}
+
+@Composable
+private fun ImageViewerContent(
+    item: DriveItem,
+    imageLoadResult: ImageLoadResult?,
+) {
+    when (val result = imageLoadResult) {
+        is ImageLoadResult.Ready -> Image(
+            bitmap = result.bitmap.asImageBitmap(),
+            contentDescription = item.title,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        is ImageLoadResult.Failed -> MediaPlaceholderContent(item = item, status = result.message)
+        ImageLoadResult.Unavailable -> MediaPlaceholderContent(item = item, status = "Image stream unavailable")
+        null -> MediaPlaceholderContent(
+            item = item,
+            status = if (item.mediaUrl == null) "Sample image preview" else "Loading image",
+        )
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun VideoViewerContent(
+    item: DriveItem,
+    mediaLoader: DriveMediaLoader,
+    playWhenReady: Boolean,
+) {
+    val context = LocalContext.current
+    var videoRequest by remember(item.id, item.mediaUrl) { mutableStateOf<VideoRequest?>(null) }
+    var videoRequestLoaded by remember(item.id, item.mediaUrl) { mutableStateOf(false) }
+
+    LaunchedEffect(item.id, item.mediaUrl) {
+        videoRequest = null
+        videoRequestLoaded = false
+        if (item.mediaUrl != null) {
+            runBackground(
+                request = { mediaLoader.videoRequest(item) },
+                onResult = {
+                    videoRequest = it
+                    videoRequestLoaded = true
+                },
+            )
+        } else {
+            videoRequestLoaded = true
+        }
+    }
+
+    if (videoRequest == null) {
+        MediaPlaceholderContent(
+            item = item,
+            status = if (videoRequestLoaded) "Video stream unavailable" else "Preparing video",
+        )
+        return
+    }
+
+    val request = videoRequest ?: return
+    val player = remember(request.url, request.accessToken) {
+        val dataSourceFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(mapOf("Authorization" to "Bearer ${request.accessToken}"))
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build()
+            .apply {
+                setMediaItem(MediaItem.fromUri(request.url))
+                prepare()
+            }
+    }
+
+    LaunchedEffect(playWhenReady) {
+        player.playWhenReady = playWhenReady
+    }
+
+    androidx.compose.runtime.DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    AndroidView(
+        factory = { viewContext ->
+            PlayerView(viewContext).apply {
+                useController = false
+                this.player = player
+            }
+        },
+        update = { it.player = player },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
+private fun MediaPlaceholderContent(item: DriveItem, status: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 48.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = item.type.label,
+            color = Color.White.copy(alpha = 0.74f),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 44.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 48.sp,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Text(
+            text = status,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 18.sp,
+            modifier = Modifier.padding(top = 18.dp),
+        )
     }
 }
 

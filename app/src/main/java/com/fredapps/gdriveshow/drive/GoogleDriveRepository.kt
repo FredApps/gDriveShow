@@ -116,6 +116,11 @@ class GoogleDriveRepository(
             modifiedLabel = optString("modifiedTime").toModifiedLabel(),
             description = optString("description").ifBlank { null },
             durationLabel = durationLabel,
+            mediaUrl = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
+                "$FilesUrl/${getString("id")}?alt=media"
+            } else {
+                null
+            },
         )
     }
 

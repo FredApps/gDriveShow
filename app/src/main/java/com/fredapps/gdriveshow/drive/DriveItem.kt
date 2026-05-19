@@ -15,6 +15,7 @@ data class DriveItem(
     val durationLabel: String? = null,
     val modifiedLabel: String,
     val accentColor: Long,
+    val mediaUrl: String? = null,
 )
 
 val DriveMediaType.label: String
@@ -33,4 +34,3 @@ val DriveItem.subtitle: String
 
 val DriveItem.isPlayable: Boolean
     get() = type == DriveMediaType.Image || type == DriveMediaType.Video
-

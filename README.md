@@ -31,7 +31,7 @@ When stored tokens exist, the app attempts to load supported folders, images, an
 
 The current folder can be saved as the startup folder from the Browse screen. Settings shows the selected startup folder.
 
-Images and videos can now open in a fullscreen viewer shell with previous/next navigation. Actual authenticated Drive media streaming is the next playback step.
+Images and videos can open in a fullscreen viewer with previous/next navigation. Real Drive images are loaded with authenticated requests, and videos use Media3/ExoPlayer with Drive authorization headers when media URLs are available.
 
 ## Local Setup
 
