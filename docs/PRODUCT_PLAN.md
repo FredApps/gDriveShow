@@ -103,4 +103,5 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 10. Add persisted folder selection and a folder picker for choosing the startup folder. Startup folder persistence done; full picker still pending.
 11. Add media playback with image viewing and video playback. Viewer/control shell done.
 12. Add authenticated media stream loading for Drive images and videos. Started.
-13. Add playback error states, buffering indicators, and TV remote key handling.
+13. Add playback error states, buffering indicators, and TV remote key handling. Done.
+14. Add slideshow timing, pause/resume, and mixed image/video advancement.

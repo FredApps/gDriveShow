@@ -44,9 +44,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -1192,7 +1201,9 @@ private fun MediaViewerScreen(
 ) {
     val item = items.getOrNull(currentIndex) ?: return
     var videoPlaying by remember(item.id) { mutableStateOf(false) }
+    var videoStatus by remember(item.id) { mutableStateOf("Preparing video") }
     var imageLoadResult by remember(item.id) { mutableStateOf<ImageLoadResult?>(null) }
+    val focusRequester = remember { FocusRequester() }
     val accent = Color(item.accentColor)
 
     LaunchedEffect(item.id, item.mediaUrl) {
@@ -1205,10 +1216,46 @@ private fun MediaViewerScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> {
+                        onPrevious()
+                        true
+                    }
+
+                    Key.DirectionRight -> {
+                        onNext()
+                        true
+                    }
+
+                    Key.Back, Key.Escape -> {
+                        onBack()
+                        true
+                    }
+
+                    Key.DirectionCenter, Key.Enter, Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        if (item.type == DriveMediaType.Video) {
+                            videoPlaying = !videoPlaying
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    else -> false
+                }
+            },
     ) {
         Box(
             modifier = Modifier
@@ -1228,6 +1275,7 @@ private fun MediaViewerScreen(
                     item = item,
                     mediaLoader = mediaLoader,
                     playWhenReady = videoPlaying,
+                    onStatusChanged = { videoStatus = it },
                 )
 
                 DriveMediaType.Folder -> MediaPlaceholderContent(
@@ -1246,6 +1294,9 @@ private fun MediaViewerScreen(
         ) {
             Text(text = "${currentIndex + 1} of ${items.size}", color = Color.White, fontSize = 18.sp)
             Text(text = item.modifiedLabel, color = Color(0xFFB0BAC5), fontSize = 15.sp)
+            if (item.type == DriveMediaType.Video) {
+                Text(text = videoStatus, color = Color(0xFFB0BAC5), fontSize = 15.sp)
+            }
         }
 
         Row(
@@ -1304,6 +1355,7 @@ private fun VideoViewerContent(
     item: DriveItem,
     mediaLoader: DriveMediaLoader,
     playWhenReady: Boolean,
+    onStatusChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var videoRequest by remember(item.id, item.mediaUrl) { mutableStateOf<VideoRequest?>(null) }
@@ -1312,16 +1364,21 @@ private fun VideoViewerContent(
     LaunchedEffect(item.id, item.mediaUrl) {
         videoRequest = null
         videoRequestLoaded = false
+        onStatusChanged("Preparing video")
         if (item.mediaUrl != null) {
             runBackground(
                 request = { mediaLoader.videoRequest(item) },
                 onResult = {
                     videoRequest = it
                     videoRequestLoaded = true
+                    if (it == null) {
+                        onStatusChanged("Stream unavailable")
+                    }
                 },
             )
         } else {
             videoRequestLoaded = true
+            onStatusChanged("Stream unavailable")
         }
     }
 
@@ -1348,10 +1405,34 @@ private fun VideoViewerContent(
 
     LaunchedEffect(playWhenReady) {
         player.playWhenReady = playWhenReady
+        onStatusChanged(if (playWhenReady) "Playing" else "Paused")
     }
 
     androidx.compose.runtime.DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                onStatusChanged(
+                    when (playbackState) {
+                        Player.STATE_BUFFERING -> "Buffering"
+                        Player.STATE_READY -> if (player.playWhenReady) "Playing" else "Ready"
+                        Player.STATE_ENDED -> "Ended"
+                        Player.STATE_IDLE -> "Idle"
+                        else -> "Preparing video"
+                    },
+                )
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                onStatusChanged(error.message ?: "Playback error")
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                onStatusChanged(if (isPlaying) "Playing" else "Paused")
+            }
+        }
+        player.addListener(listener)
         onDispose {
+            player.removeListener(listener)
             player.release()
         }
     }

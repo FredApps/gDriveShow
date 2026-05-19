@@ -33,6 +33,8 @@ The current folder can be saved as the startup folder from the Browse screen. Se
 
 Images and videos can open in a fullscreen viewer with previous/next navigation. Real Drive images are loaded with authenticated requests, and videos use Media3/ExoPlayer with Drive authorization headers when media URLs are available.
 
+The fullscreen viewer handles TV remote left/right/back/select keys and shows video buffering, ready, playing, paused, ended, and error states.
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
