@@ -167,7 +167,9 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         var sortMode by remember { mutableStateOf(SortMode.Recent) }
         var selectedItemId by remember { mutableStateOf(driveItems.firstOrNull()?.id) }
         var slideshowIndex by remember { mutableIntStateOf(0) }
+        var mediaViewerIndex by remember { mutableIntStateOf(0) }
         var showingSlideshow by remember { mutableStateOf(false) }
+        var showingMediaViewer by remember { mutableStateOf(false) }
         var authUiState by remember { mutableStateOf<AuthUiState>(AuthUiState.Idle) }
 
         fun loadDriveContent(folder: FolderLocation = folderStack.last()) {
@@ -215,7 +217,15 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             ?: driveItems.firstOrNull()
 
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-            if (showingSlideshow) {
+            if (showingMediaViewer) {
+                MediaViewerScreen(
+                    items = slideshowItems,
+                    currentIndex = mediaViewerIndex,
+                    onPrevious = { mediaViewerIndex = (mediaViewerIndex - 1).floorMod(slideshowItems.size) },
+                    onNext = { mediaViewerIndex = (mediaViewerIndex + 1).floorMod(slideshowItems.size) },
+                    onBack = { showingMediaViewer = false },
+                )
+            } else if (showingSlideshow) {
                 SlideshowScreen(
                     items = slideshowItems,
                     currentIndex = slideshowIndex,
@@ -260,6 +270,13 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                 val nextStartupFolder = StartupFolder(current.id, current.title)
                                 appPreferences.setStartupFolder(nextStartupFolder)
                                 startupFolder = nextStartupFolder
+                            },
+                            onOpenMedia = {
+                                selectedItem?.let { current ->
+                                    val index = slideshowItems.indexOfFirst { it.id == current.id }
+                                    mediaViewerIndex = if (index >= 0) index else 0
+                                    showingMediaViewer = slideshowItems.isNotEmpty()
+                                }
                             },
                             onStartSlideshow = {
                                 selectedItem?.let { current ->
@@ -452,6 +469,7 @@ private fun DriveContentScreen(
     onItemSelected: (DriveItem) -> Unit,
     onOpenFolder: (DriveItem) -> Unit,
     onSetStartupFolder: () -> Unit,
+    onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
 ) {
     when (contentState) {
@@ -500,6 +518,7 @@ private fun DriveContentScreen(
                     onItemSelected = onItemSelected,
                     onOpenFolder = onOpenFolder,
                     onSetStartupFolder = onSetStartupFolder,
+                    onOpenMedia = onOpenMedia,
                     onStartSlideshow = onStartSlideshow,
                 )
             }
@@ -523,6 +542,7 @@ private fun BrowseScreen(
     onItemSelected: (DriveItem) -> Unit,
     onOpenFolder: (DriveItem) -> Unit,
     onSetStartupFolder: () -> Unit,
+    onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
 ) {
     val isStartupFolder = startupFolder.id == currentFolderId
@@ -575,6 +595,7 @@ private fun BrowseScreen(
         DetailPanel(
             selectedItem = selectedItem,
             onOpenFolder = { onOpenFolder(selectedItem) },
+            onOpenMedia = onOpenMedia,
             onStartSlideshow = onStartSlideshow,
             modifier = Modifier.width(392.dp),
         )
@@ -714,6 +735,7 @@ private fun MediaArtwork(item: DriveItem, modifier: Modifier = Modifier) {
 private fun DetailPanel(
     selectedItem: DriveItem,
     onOpenFolder: () -> Unit,
+    onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -751,7 +773,7 @@ private fun DetailPanel(
         )
         Spacer(modifier = Modifier.weight(1f))
         Button(
-            onClick = if (selectedItem.type == DriveMediaType.Folder) onOpenFolder else onStartSlideshow,
+            onClick = if (selectedItem.type == DriveMediaType.Folder) onOpenFolder else onOpenMedia,
             enabled = selectedItem.type == DriveMediaType.Folder || selectedItem.isPlayable,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF72D6C9),
@@ -763,10 +785,28 @@ private fun DetailPanel(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = if (selectedItem.type == DriveMediaType.Folder) "Open folder" else "Start slideshow",
+                text = when (selectedItem.type) {
+                    DriveMediaType.Folder -> "Open folder"
+                    DriveMediaType.Image -> "View image"
+                    DriveMediaType.Video -> "Play video"
+                },
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
             )
+        }
+        if (selectedItem.isPlayable) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onStartSlideshow,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF303941),
+                    contentColor = Color.White,
+                ),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Start slideshow", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -1107,6 +1147,102 @@ private fun SlideshowScreen(
         ) {
             Button(onClick = onPrevious, shape = RoundedCornerShape(6.dp)) {
                 Text("Previous")
+            }
+            Button(onClick = onNext, shape = RoundedCornerShape(6.dp)) {
+                Text("Next")
+            }
+            Button(onClick = onBack, shape = RoundedCornerShape(6.dp)) {
+                Text("Back")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaViewerScreen(
+    items: List<DriveItem>,
+    currentIndex: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val item = items.getOrNull(currentIndex) ?: return
+    var videoPlaying by remember(item.id) { mutableStateOf(false) }
+    val accent = Color(item.accentColor)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.82f)
+                .fillMaxHeight(0.72f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Brush.radialGradient(listOf(accent, Color(0xFF11161B)))),
+        ) {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = item.type.label,
+                    color = Color.White.copy(alpha = 0.74f),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = item.title,
+                    color = Color.White,
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 48.sp,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                Text(
+                    text = when (item.type) {
+                        DriveMediaType.Image -> "Fullscreen image preview"
+                        DriveMediaType.Video -> if (videoPlaying) "Video playback running" else "Video playback paused"
+                        DriveMediaType.Folder -> "Folder"
+                    },
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(top = 18.dp),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 44.dp, top = 34.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = "${currentIndex + 1} of ${items.size}", color = Color.White, fontSize = 18.sp)
+            Text(text = item.modifiedLabel, color = Color(0xFFB0BAC5), fontSize = 15.sp)
+        }
+
+        Row(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Button(onClick = onPrevious, shape = RoundedCornerShape(6.dp)) {
+                Text("Previous")
+            }
+            if (item.type == DriveMediaType.Video) {
+                Button(
+                    onClick = { videoPlaying = !videoPlaying },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF72D6C9),
+                        contentColor = Color(0xFF101214),
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Text(if (videoPlaying) "Pause" else "Play")
+                }
             }
             Button(onClick = onNext, shape = RoundedCornerShape(6.dp)) {
                 Text("Next")

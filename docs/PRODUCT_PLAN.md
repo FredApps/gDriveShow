@@ -71,8 +71,8 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 
 ### Milestone 3: Playback
 
-- Images load full-screen.
-- Videos play with remote controls.
+- Images load full-screen. Viewer shell done; real image stream loading pending.
+- Videos play with remote controls. Control shell done; real video stream playback pending.
 - Mixed slideshow handles unsupported files gracefully.
 
 ### Milestone 4: Polish
@@ -101,4 +101,5 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 8. Replace the sample connection state with token-aware connected/disconnected state. Started.
 9. Add folder navigation beyond the Drive root folder. Done.
 10. Add persisted folder selection and a folder picker for choosing the startup folder. Startup folder persistence done; full picker still pending.
-11. Add media playback with image viewing and video playback.
+11. Add media playback with image viewing and video playback. Viewer/control shell done.
+12. Add authenticated media stream loading for Drive images and videos.

@@ -31,6 +31,8 @@ When stored tokens exist, the app attempts to load supported folders, images, an
 
 The current folder can be saved as the startup folder from the Browse screen. Settings shows the selected startup folder.
 
+Images and videos can now open in a fullscreen viewer shell with previous/next navigation. Actual authenticated Drive media streaming is the next playback step.
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
