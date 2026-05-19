@@ -47,10 +47,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fredapps.gdriveshow.drive.DriveItem
+import com.fredapps.gdriveshow.drive.DriveConnectionState
+import com.fredapps.gdriveshow.drive.DriveContentState
 import com.fredapps.gdriveshow.drive.DriveMediaType
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
 import com.fredapps.gdriveshow.drive.isPlayable
 import com.fredapps.gdriveshow.drive.label
+import com.fredapps.gdriveshow.drive.statusLabel
 import com.fredapps.gdriveshow.drive.subtitle
 
 class MainActivity : ComponentActivity() {
@@ -91,12 +94,14 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             onSurface = Color.White,
         ),
     ) {
-        val driveItems = remember { repository.rootItems() }
-        val slideshowItems = remember { repository.slideshowCandidates() }
+        val connectionState = remember { repository.connectionState() }
+        val contentState = remember { repository.rootContent() }
+        val driveItems = (contentState as? DriveContentState.Ready)?.items.orEmpty()
+        val slideshowItems = remember(contentState) { repository.slideshowCandidates(driveItems) }
         var section by remember { mutableStateOf(AppSection.Drive) }
         var filter by remember { mutableStateOf(MediaFilter.All) }
         var sortMode by remember { mutableStateOf(SortMode.Recent) }
-        var selectedItem by remember { mutableStateOf(driveItems.first()) }
+        var selectedItemId by remember { mutableStateOf(driveItems.firstOrNull()?.id) }
         var slideshowIndex by remember { mutableIntStateOf(0) }
         var showingSlideshow by remember { mutableStateOf(false) }
 
@@ -117,6 +122,8 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                     }
                 }
         }
+        val selectedItem = visibleItems.firstOrNull { it.id == selectedItemId }
+            ?: driveItems.firstOrNull()
 
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             if (showingSlideshow) {
@@ -131,21 +138,24 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                 AppShell(
                     section = section,
                     onSectionSelected = { section = it },
-                    driveStatus = "Sample Drive data",
+                    driveStatus = connectionState.statusLabel,
                 ) {
                     when (section) {
-                        AppSection.Drive -> BrowseScreen(
+                        AppSection.Drive -> DriveContentScreen(
+                            contentState = contentState,
                             selectedItem = selectedItem,
-                            items = visibleItems,
+                            visibleItems = visibleItems,
                             filter = filter,
                             sortMode = sortMode,
                             onFilterChanged = { filter = it },
                             onSortChanged = { sortMode = it },
-                            onItemSelected = { selectedItem = it },
+                            onItemSelected = { selectedItemId = it.id },
                             onStartSlideshow = {
-                                val index = slideshowItems.indexOfFirst { it.id == selectedItem.id }
-                                slideshowIndex = if (index >= 0) index else 0
-                                showingSlideshow = true
+                                selectedItem?.let { current ->
+                                    val index = slideshowItems.indexOfFirst { it.id == current.id }
+                                    slideshowIndex = if (index >= 0) index else 0
+                                    showingSlideshow = slideshowItems.isNotEmpty()
+                                }
                             },
                         )
 
@@ -157,7 +167,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                             },
                         )
 
-                        AppSection.Settings -> SettingsScreen()
+                        AppSection.Settings -> SettingsScreen(connectionState = connectionState)
                     }
                 }
             }
@@ -250,6 +260,64 @@ private fun SidebarItem(label: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 12.dp),
     )
+}
+
+@Composable
+private fun DriveContentScreen(
+    contentState: DriveContentState,
+    selectedItem: DriveItem?,
+    visibleItems: List<DriveItem>,
+    filter: MediaFilter,
+    sortMode: SortMode,
+    onFilterChanged: (MediaFilter) -> Unit,
+    onSortChanged: (SortMode) -> Unit,
+    onItemSelected: (DriveItem) -> Unit,
+    onStartSlideshow: () -> Unit,
+) {
+    when (contentState) {
+        DriveContentState.Loading -> StatePanel(
+            title = "Loading Drive",
+            message = "Reading folders and supported media from Google Drive.",
+            actionLabel = null,
+            onAction = {},
+        )
+
+        DriveContentState.Empty -> StatePanel(
+            title = "No Media Found",
+            message = "The selected Drive folder does not contain folders, images, or videos yet.",
+            actionLabel = "Open settings",
+            onAction = {},
+        )
+
+        is DriveContentState.Failed -> StatePanel(
+            title = "Drive Error",
+            message = contentState.message,
+            actionLabel = "Retry",
+            onAction = {},
+        )
+
+        is DriveContentState.Ready -> {
+            if (selectedItem == null || visibleItems.isEmpty()) {
+                StatePanel(
+                    title = "Nothing Matches",
+                    message = "Change the media filter or sort mode to see more Drive content.",
+                    actionLabel = "Show all",
+                    onAction = { onFilterChanged(MediaFilter.All) },
+                )
+            } else {
+                BrowseScreen(
+                    selectedItem = selectedItem,
+                    items = visibleItems,
+                    filter = filter,
+                    sortMode = sortMode,
+                    onFilterChanged = onFilterChanged,
+                    onSortChanged = onSortChanged,
+                    onItemSelected = onItemSelected,
+                    onStartSlideshow = onStartSlideshow,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -493,12 +561,67 @@ private fun DetailPanel(
 }
 
 @Composable
+private fun StatePanel(
+    title: String,
+    message: String,
+    actionLabel: String?,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF191D21))
+            .padding(36.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = message,
+            color = Color(0xFFB0BAC5),
+            fontSize = 17.sp,
+            lineHeight = 24.sp,
+            modifier = Modifier.padding(top = 12.dp, bottom = 26.dp),
+        )
+        if (actionLabel != null) {
+            Button(
+                onClick = onAction,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF72D6C9),
+                    contentColor = Color(0xFF101214),
+                ),
+                shape = RoundedCornerShape(6.dp),
+            ) {
+                Text(actionLabel, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         PageHeader(
             title = "Slideshows",
             subtitle = "Playable image and video sets discovered in the selected Drive folder",
         )
+        if (items.isEmpty()) {
+            StatePanel(
+                title = "No Playable Media",
+                message = "Images and videos will appear here after Drive content is loaded.",
+                actionLabel = null,
+                onAction = {},
+                modifier = Modifier.weight(1f),
+            )
+            return@Column
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -513,7 +636,7 @@ private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) 
 }
 
 @Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(connectionState: DriveConnectionState) {
     Column(modifier = Modifier.fillMaxSize()) {
         PageHeader(
             title = "Settings",
@@ -523,7 +646,7 @@ private fun SettingsScreen() {
             SettingsGroup(
                 title = "Drive",
                 rows = listOf(
-                    "Account" to "Not connected",
+                    "Account" to connectionState.settingsLabel,
                     "Starting folder" to "Root folder",
                     "Shared drives" to "Later milestone",
                 ),
@@ -550,6 +673,14 @@ private fun SettingsScreen() {
         }
     }
 }
+
+private val DriveConnectionState.settingsLabel: String
+    get() = when (this) {
+        DriveConnectionState.Disconnected -> "Not connected"
+        DriveConnectionState.Connecting -> "Connecting"
+        is DriveConnectionState.Connected -> accountLabel
+        is DriveConnectionState.Failed -> "Error"
+    }
 
 @Composable
 private fun SettingsGroup(
@@ -623,4 +754,3 @@ private fun SlideshowScreen(
 }
 
 private fun Int.floorMod(size: Int): Int = if (size == 0) 0 else ((this % size) + size) % size
-

@@ -91,7 +91,8 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 
 ## Next Engineering Slice
 
-1. Add app state models for Drive connection status and repository loading.
-2. Add Google API dependencies and an auth strategy suitable for Android TV.
-3. Implement a read-only Drive repository that maps Google Drive file metadata to `DriveItem`.
-4. Add loading, empty, and auth-error screens before wiring full media playback.
+1. Add app state models for Drive connection status and repository loading. Done.
+2. Add Google API dependencies and an auth strategy suitable for Android TV. Auth strategy documented; dependencies still pending.
+3. Implement a read-only Drive repository that maps Google Drive file metadata to `DriveItem`. Mapper boundary started.
+4. Add loading, empty, and auth-error screens before wiring full media playback. Done.
+5. Add secure token storage and a concrete `DriveAuthClient`.

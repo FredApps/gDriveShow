@@ -76,8 +76,9 @@ class SampleDriveRepository : DriveRepository {
         ),
     )
 
-    override fun rootItems(): List<DriveItem> = items
+    override fun connectionState(): DriveConnectionState = DriveConnectionState.Connected("Sample Drive data")
 
-    override fun slideshowCandidates(): List<DriveItem> = items.filter { it.isPlayable }
+    override fun rootContent(): DriveContentState = DriveContentState.Ready(items)
+
+    override fun slideshowCandidates(items: List<DriveItem>): List<DriveItem> = items.filter { it.isPlayable }
 }
-
