@@ -56,7 +56,9 @@ import com.fredapps.gdriveshow.drive.DriveContentState
 import com.fredapps.gdriveshow.drive.DriveMediaType
 import com.fredapps.gdriveshow.drive.DriveRepository
 import com.fredapps.gdriveshow.drive.GoogleDriveRepository
+import com.fredapps.gdriveshow.drive.AppPreferences
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
+import com.fredapps.gdriveshow.drive.StartupFolder
 import com.fredapps.gdriveshow.drive.isPlayable
 import com.fredapps.gdriveshow.drive.label
 import com.fredapps.gdriveshow.drive.statusLabel
@@ -129,6 +131,9 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         val tokenStore = remember(context) {
             EncryptedDriveTokenStore(context.applicationContext)
         }
+        val appPreferences = remember(context) {
+            AppPreferences(context.applicationContext)
+        }
         val authConfig = remember(context) {
             DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id))
         }
@@ -148,10 +153,13 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             )
         }
         var connectionState by remember { mutableStateOf(repository.connectionState()) }
-        var folderStack by remember {
-            mutableStateOf(listOf(FolderLocation(DriveRepository.RootFolderId, "Drive Root")))
+        var startupFolder by remember {
+            mutableStateOf(appPreferences.startupFolder())
         }
-        var contentState by remember { mutableStateOf<DriveContentState>(repository.content()) }
+        var folderStack by remember {
+            mutableStateOf(listOf(FolderLocation(startupFolder.id, startupFolder.title)))
+        }
+        var contentState by remember { mutableStateOf<DriveContentState>(repository.content(startupFolder.id)) }
         val driveItems = (contentState as? DriveContentState.Ready)?.items.orEmpty()
         val slideshowItems = remember(contentState) { repository.slideshowCandidates(driveItems) }
         var section by remember { mutableStateOf(AppSection.Drive) }
@@ -231,7 +239,9 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                             onFilterChanged = { filter = it },
                             onSortChanged = { sortMode = it },
                             onItemSelected = { selectedItemId = it.id },
+                            currentFolderId = folderStack.last().id,
                             currentFolderTitle = folderStack.last().title,
+                            startupFolder = startupFolder,
                             canGoBack = folderStack.size > 1,
                             onBackFolder = {
                                 if (folderStack.size > 1) {
@@ -244,6 +254,12 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                 val nextLocation = FolderLocation(folder.id, folder.title)
                                 folderStack = folderStack + nextLocation
                                 loadDriveContent(nextLocation)
+                            },
+                            onSetStartupFolder = {
+                                val current = folderStack.last()
+                                val nextStartupFolder = StartupFolder(current.id, current.title)
+                                appPreferences.setStartupFolder(nextStartupFolder)
+                                startupFolder = nextStartupFolder
                             },
                             onStartSlideshow = {
                                 selectedItem?.let { current ->
@@ -264,6 +280,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
 
                         AppSection.Settings -> SettingsScreen(
                             connectionState = connectionState,
+                            startupFolder = startupFolder,
                             authState = authUiState,
                             onConnect = {
                                 authUiState = AuthUiState.Working("Requesting a Google Drive sign-in code")
@@ -296,7 +313,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                             is DeviceAuthorizationResult.Authorized -> AuthUiState.Authorized(
                                                 "Google Drive authorization succeeded. Loading real Drive content now.",
                                             ).also {
-                                                folderStack = listOf(FolderLocation(DriveRepository.RootFolderId, "Drive Root"))
+                                                folderStack = listOf(FolderLocation(startupFolder.id, startupFolder.title))
                                                 loadDriveContent()
                                             }
 
@@ -315,7 +332,10 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                     },
                                     onResult = {
                                         authUiState = AuthUiState.SignedOut("Stored Google Drive tokens were cleared.")
-                                        folderStack = listOf(FolderLocation(DriveRepository.RootFolderId, "Drive Root"))
+                                        val rootFolder = StartupFolder(DriveRepository.RootFolderId, "Drive Root")
+                                        appPreferences.setStartupFolder(rootFolder)
+                                        startupFolder = rootFolder
+                                        folderStack = listOf(FolderLocation(rootFolder.id, rootFolder.title))
                                         loadDriveContent()
                                     },
                                 )
@@ -422,13 +442,16 @@ private fun DriveContentScreen(
     visibleItems: List<DriveItem>,
     filter: MediaFilter,
     sortMode: SortMode,
+    currentFolderId: String,
     currentFolderTitle: String,
+    startupFolder: StartupFolder,
     canGoBack: Boolean,
     onBackFolder: () -> Unit,
     onFilterChanged: (MediaFilter) -> Unit,
     onSortChanged: (SortMode) -> Unit,
     onItemSelected: (DriveItem) -> Unit,
     onOpenFolder: (DriveItem) -> Unit,
+    onSetStartupFolder: () -> Unit,
     onStartSlideshow: () -> Unit,
 ) {
     when (contentState) {
@@ -467,13 +490,16 @@ private fun DriveContentScreen(
                     items = visibleItems,
                     filter = filter,
                     sortMode = sortMode,
+                    currentFolderId = currentFolderId,
                     currentFolderTitle = currentFolderTitle,
+                    startupFolder = startupFolder,
                     canGoBack = canGoBack,
                     onBackFolder = onBackFolder,
                     onFilterChanged = onFilterChanged,
                     onSortChanged = onSortChanged,
                     onItemSelected = onItemSelected,
                     onOpenFolder = onOpenFolder,
+                    onSetStartupFolder = onSetStartupFolder,
                     onStartSlideshow = onStartSlideshow,
                 )
             }
@@ -487,15 +513,19 @@ private fun BrowseScreen(
     items: List<DriveItem>,
     filter: MediaFilter,
     sortMode: SortMode,
+    currentFolderId: String,
     currentFolderTitle: String,
+    startupFolder: StartupFolder,
     canGoBack: Boolean,
     onBackFolder: () -> Unit,
     onFilterChanged: (MediaFilter) -> Unit,
     onSortChanged: (SortMode) -> Unit,
     onItemSelected: (DriveItem) -> Unit,
     onOpenFolder: (DriveItem) -> Unit,
+    onSetStartupFolder: () -> Unit,
     onStartSlideshow: () -> Unit,
 ) {
+    val isStartupFolder = startupFolder.id == currentFolderId
     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             PageHeader(
@@ -506,6 +536,12 @@ private fun BrowseScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.padding(bottom = 18.dp),
             ) {
+                PillButton(
+                    label = if (isStartupFolder) "Startup folder" else "Set startup",
+                    selected = isStartupFolder,
+                    onClick = onSetStartupFolder,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
                 if (canGoBack) {
                     PillButton(
                         label = "Back",
@@ -813,6 +849,7 @@ private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) 
 @Composable
 private fun SettingsScreen(
     connectionState: DriveConnectionState,
+    startupFolder: StartupFolder,
     authState: AuthUiState,
     onConnect: () -> Unit,
     onCheckAuthorization: (DeviceAuthorizationPrompt) -> Unit,
@@ -829,7 +866,7 @@ private fun SettingsScreen(
                 title = "Drive",
                 rows = listOf(
                     "Account" to connectionState.settingsLabel,
-                    "Starting folder" to "Root folder",
+                    "Starting folder" to startupFolder.title,
                     "Shared drives" to "Later milestone",
                 ),
                 modifier = Modifier.weight(1f),

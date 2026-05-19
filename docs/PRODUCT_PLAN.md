@@ -100,4 +100,5 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 7. Add a Drive-backed repository that uses stored tokens to list real Drive files. Done.
 8. Replace the sample connection state with token-aware connected/disconnected state. Started.
 9. Add folder navigation beyond the Drive root folder. Done.
-10. Add persisted folder selection and a folder picker for choosing the startup folder.
+10. Add persisted folder selection and a folder picker for choosing the startup folder. Startup folder persistence done; full picker still pending.
+11. Add media playback with image viewing and video playback.

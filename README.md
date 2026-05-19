@@ -29,6 +29,8 @@ The Settings screen already includes the TV-friendly connect flow. With the clie
 
 When stored tokens exist, the app attempts to load supported folders, images, and videos from Google Drive and supports folder navigation. Without tokens, it falls back to sample data.
 
+The current folder can be saved as the startup folder from the Browse screen. Settings shows the selected startup folder.
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
