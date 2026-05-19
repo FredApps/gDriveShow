@@ -13,6 +13,15 @@ class DriveMediaLoader(
 ) {
     fun loadImage(item: DriveItem): ImageLoadResult {
         val mediaUrl = item.mediaUrl ?: return ImageLoadResult.Unavailable
+        return loadBitmap(mediaUrl)
+    }
+
+    fun loadThumbnail(item: DriveItem): ImageLoadResult {
+        val thumbnailUrl = item.thumbnailUrl ?: return ImageLoadResult.Unavailable
+        return loadBitmap(thumbnailUrl)
+    }
+
+    private fun loadBitmap(url: String): ImageLoadResult {
         val accessToken = when (val token = accessTokenProvider.accessToken()) {
             is AccessTokenResult.Ready -> token.accessToken
             AccessTokenResult.MissingTokens -> return ImageLoadResult.Failed("Google Drive is not connected.")
@@ -20,7 +29,7 @@ class DriveMediaLoader(
         }
 
         return try {
-            val connection = (URL(mediaUrl).openConnection() as HttpURLConnection).apply {
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = TimeoutMillis
                 readTimeout = TimeoutMillis
@@ -63,4 +72,3 @@ data class VideoRequest(
     val url: String,
     val accessToken: String,
 )
-

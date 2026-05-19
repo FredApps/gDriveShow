@@ -10,7 +10,11 @@ sealed interface DriveConnectionState {
 sealed interface DriveContentState {
     data object Loading : DriveContentState
     data object Empty : DriveContentState
-    data class Ready(val items: List<DriveItem>) : DriveContentState
+    data class Ready(
+        val items: List<DriveItem>,
+        val isStale: Boolean = false,
+        val sourceMessage: String? = null,
+    ) : DriveContentState
     data class Failed(val message: String) : DriveContentState
 }
 
@@ -21,4 +25,3 @@ val DriveConnectionState.statusLabel: String
         is DriveConnectionState.Connected -> accountLabel
         is DriveConnectionState.Failed -> "Drive connection failed"
     }
-

@@ -9,6 +9,7 @@ data class DriveFileMetadata(
     val itemCount: Int? = null,
     val durationLabel: String? = null,
     val mediaUrl: String? = null,
+    val thumbnailUrl: String? = null,
 )
 
 fun DriveFileMetadata.toDriveItem(): DriveItem {
@@ -29,6 +30,7 @@ fun DriveFileMetadata.toDriveItem(): DriveItem {
         modifiedLabel = modifiedLabel,
         accentColor = type.defaultAccentColor,
         mediaUrl = mediaUrl,
+        thumbnailUrl = thumbnailUrl,
     )
 }
 

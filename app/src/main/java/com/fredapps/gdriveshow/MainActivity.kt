@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -55,6 +56,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,7 @@ import com.fredapps.gdriveshow.drive.DriveRepository
 import com.fredapps.gdriveshow.drive.GoogleDriveRepository
 import com.fredapps.gdriveshow.drive.AppPreferences
 import com.fredapps.gdriveshow.drive.DriveMediaLoader
+import com.fredapps.gdriveshow.drive.DriveMetadataCache
 import com.fredapps.gdriveshow.drive.ImageLoadResult
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
 import com.fredapps.gdriveshow.drive.StartupFolder
@@ -92,6 +95,7 @@ import com.fredapps.gdriveshow.drive.auth.DriveAccessTokenProvider
 import com.fredapps.gdriveshow.drive.auth.DriveAuthConfig
 import com.fredapps.gdriveshow.drive.auth.EncryptedDriveTokenStore
 import com.fredapps.gdriveshow.drive.auth.GoogleDeviceCodeAuthClient
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -156,6 +160,9 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         val appPreferences = remember(context) {
             AppPreferences(context.applicationContext)
         }
+        val metadataCache = remember(context) {
+            DriveMetadataCache(context.applicationContext)
+        }
         val authConfig = remember(context) {
             DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id))
         }
@@ -165,7 +172,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                 tokenStore = tokenStore,
             )
         }
-        val googleDriveRepository = remember(authConfig, tokenStore) {
+        val googleDriveRepository = remember(authConfig, tokenStore, metadataCache) {
             val accessTokenProvider = DriveAccessTokenProvider(
                 config = authConfig,
                 tokenStore = tokenStore,
@@ -173,6 +180,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
             GoogleDriveRepository(
                 tokenStore = tokenStore,
                 accessTokenProvider = accessTokenProvider,
+                metadataCache = metadataCache,
             )
         }
         val mediaLoader = remember(authConfig, tokenStore) {
@@ -261,6 +269,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                 SlideshowScreen(
                     items = slideshowItems,
                     currentIndex = slideshowIndex,
+                    mediaLoader = mediaLoader,
                     onPrevious = { slideshowIndex = (slideshowIndex - 1).floorMod(slideshowItems.size) },
                     onNext = { slideshowIndex = (slideshowIndex + 1).floorMod(slideshowItems.size) },
                     onBack = { showingSlideshow = false },
@@ -317,10 +326,14 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                     showingSlideshow = slideshowItems.isNotEmpty()
                                 }
                             },
+                            onRetry = { loadDriveContent() },
+                            onOpenSettings = { section = AppSection.Settings },
+                            mediaLoader = mediaLoader,
                         )
 
                         AppSection.Slideshows -> SlideshowLibraryScreen(
                             items = slideshowItems,
+                            mediaLoader = mediaLoader,
                             onStart = { item ->
                                 slideshowIndex = slideshowItems.indexOf(item).coerceAtLeast(0)
                                 showingSlideshow = true
@@ -330,7 +343,14 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                         AppSection.Settings -> SettingsScreen(
                             connectionState = connectionState,
                             startupFolder = startupFolder,
+                            currentFolder = folderStack.last(),
+                            folderOptions = driveItems.filter { it.type == DriveMediaType.Folder },
                             authState = authUiState,
+                            onPickStartupFolder = { folder ->
+                                val nextStartupFolder = StartupFolder(folder.id, folder.title)
+                                appPreferences.setStartupFolder(nextStartupFolder)
+                                startupFolder = nextStartupFolder
+                            },
                             onConnect = {
                                 authUiState = AuthUiState.Working("Requesting a Google Drive sign-in code")
                                 runAuthRequest(
@@ -377,6 +397,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                 runAuthRequest(
                                     request = {
                                         authClient.signOut()
+                                        metadataCache.clear()
                                         Unit
                                     },
                                     onResult = {
@@ -503,6 +524,9 @@ private fun DriveContentScreen(
     onSetStartupFolder: () -> Unit,
     onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
+    onRetry: () -> Unit,
+    onOpenSettings: () -> Unit,
+    mediaLoader: DriveMediaLoader,
 ) {
     when (contentState) {
         DriveContentState.Loading -> StatePanel(
@@ -516,14 +540,14 @@ private fun DriveContentScreen(
             title = "No Media Found",
             message = "The selected Drive folder does not contain folders, images, or videos yet.",
             actionLabel = "Open settings",
-            onAction = {},
+            onAction = onOpenSettings,
         )
 
         is DriveContentState.Failed -> StatePanel(
             title = "Drive Error",
             message = contentState.message,
             actionLabel = "Retry",
-            onAction = {},
+            onAction = onRetry,
         )
 
         is DriveContentState.Ready -> {
@@ -552,6 +576,8 @@ private fun DriveContentScreen(
                     onSetStartupFolder = onSetStartupFolder,
                     onOpenMedia = onOpenMedia,
                     onStartSlideshow = onStartSlideshow,
+                    mediaLoader = mediaLoader,
+                    staleMessage = contentState.sourceMessage,
                 )
             }
         }
@@ -576,13 +602,15 @@ private fun BrowseScreen(
     onSetStartupFolder: () -> Unit,
     onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
+    mediaLoader: DriveMediaLoader,
+    staleMessage: String?,
 ) {
     val isStartupFolder = startupFolder.id == currentFolderId
     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             PageHeader(
                 title = currentFolderTitle,
-                subtitle = "Folders, photos, and videos optimized for TV navigation",
+                subtitle = staleMessage ?: "Folders, photos, and videos optimized for TV navigation",
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -622,6 +650,7 @@ private fun BrowseScreen(
                 items = items,
                 selectedItem = selectedItem,
                 onItemSelected = onItemSelected,
+                mediaLoader = mediaLoader,
             )
         }
         DetailPanel(
@@ -629,6 +658,7 @@ private fun BrowseScreen(
             onOpenFolder = { onOpenFolder(selectedItem) },
             onOpenMedia = onOpenMedia,
             onStartSlideshow = onStartSlideshow,
+            mediaLoader = mediaLoader,
             modifier = Modifier.width(392.dp),
         )
     }
@@ -682,6 +712,7 @@ private fun ContentGrid(
     items: List<DriveItem>,
     selectedItem: DriveItem,
     onItemSelected: (DriveItem) -> Unit,
+    mediaLoader: DriveMediaLoader,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -694,6 +725,7 @@ private fun ContentGrid(
             DriveCard(
                 item = item,
                 selected = selectedItem.id == item.id,
+                mediaLoader = mediaLoader,
                 onSelected = { onItemSelected(item) },
             )
         }
@@ -701,7 +733,12 @@ private fun ContentGrid(
 }
 
 @Composable
-private fun DriveCard(item: DriveItem, selected: Boolean, onSelected: () -> Unit) {
+private fun DriveCard(
+    item: DriveItem,
+    selected: Boolean,
+    mediaLoader: DriveMediaLoader?,
+    onSelected: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
     val accent = Color(item.accentColor)
@@ -721,7 +758,11 @@ private fun DriveCard(item: DriveItem, selected: Boolean, onSelected: () -> Unit
             .clickable(onClick = onSelected)
             .padding(14.dp),
     ) {
-        MediaArtwork(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f))
+        MediaArtwork(
+            item = item,
+            mediaLoader = mediaLoader,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f),
+        )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = item.title,
@@ -742,13 +783,43 @@ private fun DriveCard(item: DriveItem, selected: Boolean, onSelected: () -> Unit
 }
 
 @Composable
-private fun MediaArtwork(item: DriveItem, modifier: Modifier = Modifier) {
+private fun MediaArtwork(
+    item: DriveItem,
+    mediaLoader: DriveMediaLoader? = null,
+    modifier: Modifier = Modifier,
+) {
     val accent = Color(item.accentColor)
+    var thumbnailResult by remember(item.id, item.thumbnailUrl) { mutableStateOf<ImageLoadResult?>(null) }
+
+    LaunchedEffect(item.id, item.thumbnailUrl, mediaLoader) {
+        thumbnailResult = null
+        if (mediaLoader != null && item.thumbnailUrl != null) {
+            runBackground(
+                request = { mediaLoader.loadThumbnail(item) },
+                onResult = { thumbnailResult = it },
+            )
+        }
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(Brush.linearGradient(colors = listOf(accent, Color(0xFF273039)))),
     ) {
+        val readyThumbnail = thumbnailResult as? ImageLoadResult.Ready
+        if (readyThumbnail != null) {
+            Image(
+                bitmap = readyThumbnail.bitmap.asImageBitmap(),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.12f)),
+            )
+        }
         Text(
             text = item.type.label,
             color = Color(0xFF101214),
@@ -769,6 +840,7 @@ private fun DetailPanel(
     onOpenFolder: () -> Unit,
     onOpenMedia: () -> Unit,
     onStartSlideshow: () -> Unit,
+    mediaLoader: DriveMediaLoader,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -780,6 +852,7 @@ private fun DetailPanel(
     ) {
         MediaArtwork(
             item = selectedItem,
+            mediaLoader = mediaLoader,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 11f),
         )
         Spacer(modifier = Modifier.height(22.dp))
@@ -889,7 +962,11 @@ private fun StatePanel(
 }
 
 @Composable
-private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) -> Unit) {
+private fun SlideshowLibraryScreen(
+    items: List<DriveItem>,
+    mediaLoader: DriveMediaLoader,
+    onStart: (DriveItem) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxSize()) {
         PageHeader(
             title = "Slideshows",
@@ -912,7 +989,12 @@ private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) 
             modifier = Modifier.fillMaxSize(),
         ) {
             items(items, key = { it.id }) { item ->
-                DriveCard(item = item, selected = false, onSelected = { onStart(item) })
+                DriveCard(
+                    item = item,
+                    selected = false,
+                    mediaLoader = mediaLoader,
+                    onSelected = { onStart(item) },
+                )
             }
         }
     }
@@ -922,7 +1004,10 @@ private fun SlideshowLibraryScreen(items: List<DriveItem>, onStart: (DriveItem) 
 private fun SettingsScreen(
     connectionState: DriveConnectionState,
     startupFolder: StartupFolder,
+    currentFolder: FolderLocation,
+    folderOptions: List<DriveItem>,
     authState: AuthUiState,
+    onPickStartupFolder: (StartupFolder) -> Unit,
     onConnect: () -> Unit,
     onCheckAuthorization: (DeviceAuthorizationPrompt) -> Unit,
     onCancelAuthorization: () -> Unit,
@@ -939,7 +1024,7 @@ private fun SettingsScreen(
                 rows = listOf(
                     "Account" to connectionState.settingsLabel,
                     "Starting folder" to startupFolder.title,
-                    "Shared drives" to "Later milestone",
+                    "Shared drives" to "Root picker enabled",
                 ),
                 modifier = Modifier.weight(1f),
             )
@@ -955,13 +1040,20 @@ private fun SettingsScreen(
             SettingsGroup(
                 title = "Cache",
                 rows = listOf(
-                    "Thumbnails" to "Enabled",
-                    "Offline metadata" to "Later milestone",
+                    "Thumbnails" to "Loaded from Drive",
+                    "Offline metadata" to "Last folder cached",
                     "Cache size" to "512 MB",
                 ),
                 modifier = Modifier.weight(1f),
             )
         }
+        Spacer(modifier = Modifier.height(22.dp))
+        StartupFolderPicker(
+            startupFolder = startupFolder,
+            currentFolder = currentFolder,
+            folderOptions = folderOptions,
+            onPickStartupFolder = onPickStartupFolder,
+        )
         Spacer(modifier = Modifier.height(22.dp))
         DriveAuthPanel(
             authState = authState,
@@ -971,6 +1063,74 @@ private fun SettingsScreen(
             onSignOut = onSignOut,
         )
     }
+}
+
+@Composable
+private fun StartupFolderPicker(
+    startupFolder: StartupFolder,
+    currentFolder: FolderLocation,
+    folderOptions: List<DriveItem>,
+    onPickStartupFolder: (StartupFolder) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF191D21))
+            .padding(20.dp),
+    ) {
+        Text(text = "Startup Folder", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = "Pick the folder this TV opens after launch. Browse Drive first to reveal more choices.",
+            color = Color(0xFFB0BAC5),
+            fontSize = 14.sp,
+            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            val currentStartup = StartupFolder(currentFolder.id, currentFolder.title)
+            FolderPickButton(
+                label = "Current: ${currentFolder.title}",
+                selected = startupFolder.id == currentFolder.id,
+                onClick = { onPickStartupFolder(currentStartup) },
+            )
+            folderOptions.take(3).forEach { folder ->
+                FolderPickButton(
+                    label = folder.title,
+                    selected = startupFolder.id == folder.id,
+                    onClick = { onPickStartupFolder(StartupFolder(folder.id, folder.title)) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.FolderPickButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    val background = when {
+        selected -> Color(0xFF72D6C9)
+        focused -> Color(0xFF303941)
+        else -> Color(0xFF242A30)
+    }
+
+    Text(
+        text = label,
+        color = if (selected) Color(0xFF101214) else Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .weight(1f)
+            .clip(shape)
+            .background(background)
+            .border(BorderStroke(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF303941)), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+    )
 }
 
 private val DriveConnectionState.settingsLabel: String
@@ -1149,28 +1309,109 @@ private fun SettingsGroup(
 private fun SlideshowScreen(
     items: List<DriveItem>,
     currentIndex: Int,
+    mediaLoader: DriveMediaLoader,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onBack: () -> Unit,
 ) {
     val item = items.getOrNull(currentIndex) ?: return
-    val accent = Color(item.accentColor)
+    var paused by remember { mutableStateOf(false) }
+    var videoStatus by remember(item.id) { mutableStateOf("Preparing video") }
+    var imageLoadResult by remember(item.id) { mutableStateOf<ImageLoadResult?>(null) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(item.id, item.mediaUrl) {
+        imageLoadResult = null
+        if (item.type == DriveMediaType.Image && item.mediaUrl != null) {
+            runBackground(
+                request = { mediaLoader.loadImage(item) },
+                onResult = { imageLoadResult = it },
+            )
+        }
+    }
+
+    LaunchedEffect(item.id, paused, items.size) {
+        if (!paused && items.size > 1) {
+            delay(if (item.type == DriveMediaType.Video) VideoSlideIntervalMillis else ImageSlideIntervalMillis)
+            onNext()
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.radialGradient(listOf(accent, Color.Black))),
+            .background(Color.Black)
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> {
+                        onPrevious()
+                        true
+                    }
+
+                    Key.DirectionRight -> {
+                        onNext()
+                        true
+                    }
+
+                    Key.DirectionCenter, Key.Enter, Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        paused = !paused
+                        true
+                    }
+
+                    Key.Back, Key.Escape -> {
+                        onBack()
+                        true
+                    }
+
+                    else -> false
+                }
+            },
     ) {
-        Column(
-            modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.86f)
+                .fillMaxHeight(0.76f),
         ) {
-            Text(text = item.title, color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Bold)
+            when (item.type) {
+                DriveMediaType.Image -> ImageViewerContent(
+                    item = item,
+                    imageLoadResult = imageLoadResult,
+                )
+
+                DriveMediaType.Video -> VideoViewerContent(
+                    item = item,
+                    mediaLoader = mediaLoader,
+                    playWhenReady = !paused,
+                    onStatusChanged = { videoStatus = it },
+                )
+
+                DriveMediaType.Folder -> MediaPlaceholderContent(
+                    item = item,
+                    status = "Folder",
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 44.dp, top = 32.dp),
+        ) {
+            Text(text = item.title, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = "${currentIndex + 1} of ${items.size} - ${item.type.label}",
-                color = Color.White.copy(alpha = 0.78f),
-                fontSize = 20.sp,
-                modifier = Modifier.padding(top = 12.dp),
+                text = "${currentIndex + 1} of ${items.size} - ${item.type.label} - ${
+                    if (paused) "Paused" else if (item.type == DriveMediaType.Video) videoStatus else "Auto"
+                }",
+                color = Color(0xFFB0BAC5),
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
         Row(
@@ -1182,6 +1423,16 @@ private fun SlideshowScreen(
             }
             Button(onClick = onNext, shape = RoundedCornerShape(6.dp)) {
                 Text("Next")
+            }
+            Button(
+                onClick = { paused = !paused },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF72D6C9),
+                    contentColor = Color(0xFF101214),
+                ),
+                shape = RoundedCornerShape(6.dp),
+            ) {
+                Text(if (paused) "Resume" else "Pause")
             }
             Button(onClick = onBack, shape = RoundedCornerShape(6.dp)) {
                 Text("Back")
@@ -1495,3 +1746,6 @@ private fun <T> runBackground(request: () -> T, onResult: (T) -> Unit) {
 }
 
 private fun Int.floorMod(size: Int): Int = if (size == 0) 0 else ((this % size) + size) % size
+
+private const val ImageSlideIntervalMillis = 8_000L
+private const val VideoSlideIntervalMillis = 15_000L

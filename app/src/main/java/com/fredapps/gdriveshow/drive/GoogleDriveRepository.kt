@@ -16,6 +16,7 @@ import java.time.format.DateTimeParseException
 class GoogleDriveRepository(
     private val tokenStore: DriveTokenStore,
     private val accessTokenProvider: DriveAccessTokenProvider,
+    private val metadataCache: DriveMetadataCache? = null,
 ) : DriveRepository {
     override fun connectionState(): DriveConnectionState {
         return if (tokenStore.read() == null) {
@@ -42,18 +43,21 @@ class GoogleDriveRepository(
 
             do {
                 val response = get(
+                    url = FilesUrl,
                     accessToken = accessToken,
                     values = buildMap {
                         put("pageSize", "100")
                         put("q", "'$folderId' in parents and trashed = false")
                         put("orderBy", "folder,modifiedTime desc,name")
-                        put("fields", "nextPageToken,files(id,name,mimeType,modifiedTime,description,videoMediaMetadata)")
+                        put("includeItemsFromAllDrives", "true")
+                        put("supportsAllDrives", "true")
+                        put("fields", FileListFields)
                         pageToken?.let { put("pageToken", it) }
                     },
                 )
 
                 if (!response.isSuccess) {
-                    return DriveContentState.Failed(response.errorMessage())
+                    return cachedOrFailed(folderId, response.errorMessage())
                 }
 
                 val json = JSONObject(response.body)
@@ -69,19 +73,73 @@ class GoogleDriveRepository(
                 pageToken = json.optString("nextPageToken").ifBlank { null }
             } while (pageToken != null)
 
+            if (folderId == DriveRepository.RootFolderId) {
+                files += listSharedDrives(accessToken)
+                    .filterNot { sharedDrive -> files.any { it.id == sharedDrive.id } }
+            }
+
+            metadataCache?.write(folderId, files)
             if (files.isEmpty()) DriveContentState.Empty else DriveContentState.Ready(files)
         } catch (exception: IOException) {
-            DriveContentState.Failed("Could not reach Google Drive: ${exception.message}")
+            cachedOrFailed(folderId, "Could not reach Google Drive: ${exception.message}")
         } catch (exception: Exception) {
-            DriveContentState.Failed("Could not list Google Drive files: ${exception.message}")
+            cachedOrFailed(folderId, "Could not list Google Drive files: ${exception.message}")
         }
     }
 
-    private fun get(accessToken: String, values: Map<String, String>): DriveHttpResponse {
+    private fun listSharedDrives(accessToken: String): List<DriveItem> {
+        val drives = mutableListOf<DriveItem>()
+        var pageToken: String? = null
+
+        do {
+            val response = get(
+                url = DrivesUrl,
+                accessToken = accessToken,
+                values = buildMap {
+                    put("pageSize", "100")
+                    put("fields", "nextPageToken,drives(id,name)")
+                    pageToken?.let { put("pageToken", it) }
+                },
+            )
+            if (!response.isSuccess) return drives
+
+            val json = JSONObject(response.body)
+            val jsonDrives = json.optJSONArray("drives") ?: return drives
+            for (index in 0 until jsonDrives.length()) {
+                val drive = jsonDrives.getJSONObject(index)
+                drives += DriveItem(
+                    id = drive.getString("id"),
+                    title = drive.getString("name"),
+                    description = "Shared Drive available to this Google account.",
+                    type = DriveMediaType.Folder,
+                    modifiedLabel = "Shared Drive",
+                    accentColor = 0xFFFFCC80,
+                )
+            }
+            pageToken = json.optString("nextPageToken").ifBlank { null }
+        } while (pageToken != null)
+
+        return drives
+    }
+
+    private fun cachedOrFailed(folderId: String, message: String): DriveContentState {
+        val cached = metadataCache?.read(folderId).orEmpty()
+        return if (cached.isNotEmpty()) {
+            DriveContentState.Ready(
+                items = cached,
+                isStale = true,
+                sourceMessage = "$message Showing cached folder metadata.",
+            )
+        } else {
+            DriveContentState.Failed(message)
+        }
+    }
+
+    private fun get(url: String, accessToken: String, values: Map<String, String>): DriveHttpResponse {
         val query = values.entries.joinToString("&") { (key, value) ->
             "${key.urlEncode()}=${value.urlEncode()}"
         }
-        val connection = (URL("$FilesUrl?$query").openConnection() as HttpURLConnection).apply {
+        val connection = (URL("$url?$query").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = TimeoutMillis
             readTimeout = TimeoutMillis
@@ -116,6 +174,7 @@ class GoogleDriveRepository(
             modifiedLabel = optString("modifiedTime").toModifiedLabel(),
             description = optString("description").ifBlank { null },
             durationLabel = durationLabel,
+            thumbnailUrl = optString("thumbnailLink").ifBlank { null },
             mediaUrl = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
                 "$FilesUrl/${getString("id")}?alt=media"
             } else {
@@ -161,6 +220,9 @@ class GoogleDriveRepository(
 
     private companion object {
         const val FilesUrl = "https://www.googleapis.com/drive/v3/files"
+        const val DrivesUrl = "https://www.googleapis.com/drive/v3/drives"
+        const val FileListFields =
+            "nextPageToken,files(id,name,mimeType,modifiedTime,description,thumbnailLink,videoMediaMetadata)"
         const val TimeoutMillis = 15_000
     }
 }

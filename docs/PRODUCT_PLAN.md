@@ -26,7 +26,7 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
    - Folder grid.
    - Image and video tiles.
    - Sorting by name and modified date.
-   - Basic search within the selected Drive folder.
+   - Thumbnails in the media grid.
 
 4. Display modes
    - Image slideshow with configurable duration.
@@ -35,9 +35,8 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 
 ## Later Scope
 
-- Shared drive support.
 - Folder pinning for quick launch.
-- Offline metadata cache and thumbnail cache.
+- Full offline thumbnail byte cache.
 - Exclude/include filters by MIME type.
 - Ambient schedule rules.
 - Remote-friendly settings export/import.
@@ -63,31 +62,36 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 ### Milestone 2: Drive Read Access
 
 - User can sign in.
-- App lists Drive folders and supported media files.
+- App lists Drive folders, supported media files, and shared drives.
 - Browse screen consumes real Drive data.
-- Replace `SampleDriveRepository` with a Drive-backed implementation behind the existing `DriveRepository` interface.
-- Add connected, disconnected, loading, empty, and error states to the app shell.
+- `GoogleDriveRepository` implements Drive-backed loading behind the existing `DriveRepository` interface.
+- Connected, disconnected, loading, empty, retry, and cached-error fallback states are in the app shell.
 - Keep the sample repository available for emulator/demo builds.
 
 ### Milestone 3: Playback
 
 - Images load full-screen. Authenticated Drive image byte loading done.
-- Videos play with remote controls. Media3 playback with authenticated Drive requests started.
-- Mixed slideshow handles unsupported files gracefully.
+- Videos play with remote controls. Media3 playback with authenticated Drive requests done.
+- Mixed slideshow handles image/video playback and auto-advancement.
 
 ### Milestone 4: Polish
 
 - Persistent selected folder.
 - Settings screen.
 - Loading, empty, and error states.
+- Metadata cache and thumbnail loading.
+- Release build script and conditional signing config.
+- Unit tests for Drive metadata mapping.
 - TV-safe typography and focus QA.
 
 ## Current Implementation Notes
 
 - The app has a project-local toolchain copied from `WatchTalk` in `.tools`.
 - `build-debug.ps1` builds the debug APK with that local JDK, Gradle, and Android SDK.
+- `build-release.ps1` builds the release APK and uses signing environment variables when present.
 - `DriveRepository` is the boundary for real Google Drive data.
-- `SampleDriveRepository` currently feeds the TV shell, filters, slideshow library, and slideshow preview.
+- `SampleDriveRepository` still feeds the app when no Google Drive tokens exist.
+- `GoogleDriveRepository` loads Drive folder content, thumbnails, shared-drive entries, and caches folder metadata.
 
 ## Next Engineering Slice
 
@@ -98,10 +102,20 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 5. Add secure token storage and a concrete `DriveAuthClient`. Done.
 6. Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`. Done.
 7. Add a Drive-backed repository that uses stored tokens to list real Drive files. Done.
-8. Replace the sample connection state with token-aware connected/disconnected state. Started.
+8. Replace the sample connection state with token-aware connected/disconnected state. Done.
 9. Add folder navigation beyond the Drive root folder. Done.
-10. Add persisted folder selection and a folder picker for choosing the startup folder. Startup folder persistence done; full picker still pending.
-11. Add media playback with image viewing and video playback. Viewer/control shell done.
-12. Add authenticated media stream loading for Drive images and videos. Started.
+10. Add persisted folder selection and a folder picker for choosing the startup folder. Done for current/discovered folders.
+11. Add media playback with image viewing and video playback. Done.
+12. Add authenticated media stream loading for Drive images and videos. Done.
 13. Add playback error states, buffering indicators, and TV remote key handling. Done.
-14. Add slideshow timing, pause/resume, and mixed image/video advancement.
+14. Add slideshow timing, pause/resume, and mixed image/video advancement. Done.
+15. Add grid thumbnails from Drive `thumbnailLink`. Done.
+16. Add metadata caching and cached fallback on Drive errors. Done.
+17. Add shared drive root entries and all-drives file listing flags. Done.
+18. Add release build/signing pipeline and first unit tests. Done.
+
+## Remaining External Validation
+
+- `app/src/main/res/values/oauth.xml` still needs the real Google OAuth TV client ID.
+- Real-device Google sign-in still needs to be verified on an Android TV or emulator after that client ID is installed.
+- Shared-drive browsing should be validated against a real account with shared drives.

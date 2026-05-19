@@ -34,7 +34,7 @@ Google docs:
 - `google_oauth_tv_client_id` is currently blank in `app/src/main/res/values/oauth.xml`.
 - Settings includes a remote-friendly Connect flow that shows the Google user code, verification URL, and approval-check action.
 - `DriveAccessTokenProvider` reuses stored access tokens and refreshes them when they are close to expiry.
-- `GoogleDriveRepository` can list the Google Drive root folder with `files.list` once valid tokens exist.
+- `GoogleDriveRepository` lists Drive folders/media with `files.list`, includes all-drives flags, appends shared-drive root entries, and stores folder metadata in a local cache after successful loads.
 
 After creating the Google Cloud OAuth client, put the TV/limited-input client ID in `google_oauth_tv_client_id`. Do not add a client secret; this flow is for installed devices that cannot keep secrets.
 
@@ -43,13 +43,13 @@ After creating the Google Cloud OAuth client, put the TV/limited-input client ID
 The first Drive-backed repository should request only the fields needed by the UI:
 
 ```text
-files(id,name,mimeType,modifiedTime,thumbnailLink,videoMediaMetadata,durationMillis),nextPageToken
+nextPageToken,files(id,name,mimeType,modifiedTime,description,thumbnailLink,videoMediaMetadata)
 ```
 
 Initial server query should stay conservative:
 
 ```text
-trashed = false and '<folderId>' in parents
+'<folderId>' in parents and trashed = false
 ```
 
 Then filter app-side for folders plus MIME types starting with `image/` or `video/`. If that becomes too broad or slow, enumerate the specific image/video MIME types we want to support.
@@ -60,6 +60,7 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - `DriveRepository` owns Drive file listing and maps metadata into `DriveItem`.
 - `DriveFileMapper` keeps Google API DTOs out of Compose UI.
 - Compose screens consume `DriveConnectionState` and `DriveContentState`.
+- `DriveMetadataCache` stores the last loaded folder metadata and lets the UI show cached content if a later network request fails.
 
 ## Open Setup Items
 
@@ -67,4 +68,5 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - Enable the Google Drive API.
 - Decide final scope. Prefer the narrowest read-only scope that supports browsing the intended Drive content.
 - Replace the remaining sample account label with token-aware account/profile data.
-- Add persisted folder selection and a folder picker for choosing the startup folder.
+- Install the real OAuth client ID in `app/src/main/res/values/oauth.xml`.
+- Verify the Settings sign-in flow on an Android TV device or emulator.

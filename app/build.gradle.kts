@@ -20,6 +20,29 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = providers.environmentVariable("GDRIVESHOW_KEYSTORE").orNull
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("GDRIVESHOW_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("GDRIVESHOW_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("GDRIVESHOW_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            isShrinkResources = false
+            val keystorePath = providers.environmentVariable("GDRIVESHOW_KEYSTORE").orNull
+            if (!keystorePath.isNullOrBlank() && file(keystorePath).exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -43,4 +66,5 @@ dependencies {
     implementation(libs.androidx.media3.ui)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
 }

@@ -16,6 +16,7 @@ data class DriveItem(
     val modifiedLabel: String,
     val accentColor: Long,
     val mediaUrl: String? = null,
+    val thumbnailUrl: String? = null,
 )
 
 val DriveMediaType.label: String
