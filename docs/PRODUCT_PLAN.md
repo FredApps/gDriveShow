@@ -97,5 +97,6 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 4. Add loading, empty, and auth-error screens before wiring full media playback. Done.
 5. Add secure token storage and a concrete `DriveAuthClient`. Done.
 6. Wire Settings > Drive > Connect to `GoogleDeviceCodeAuthClient`. Done.
-7. Add a Drive-backed repository that uses stored tokens to list real Drive files.
-8. Replace the sample connection state with token-aware connected/disconnected state.
+7. Add a Drive-backed repository that uses stored tokens to list real Drive files. Done.
+8. Replace the sample connection state with token-aware connected/disconnected state. Started.
+9. Add folder navigation beyond the Drive root folder.

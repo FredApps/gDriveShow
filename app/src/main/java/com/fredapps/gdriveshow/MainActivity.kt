@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,7 @@ import com.fredapps.gdriveshow.drive.DriveItem
 import com.fredapps.gdriveshow.drive.DriveConnectionState
 import com.fredapps.gdriveshow.drive.DriveContentState
 import com.fredapps.gdriveshow.drive.DriveMediaType
+import com.fredapps.gdriveshow.drive.GoogleDriveRepository
 import com.fredapps.gdriveshow.drive.SampleDriveRepository
 import com.fredapps.gdriveshow.drive.isPlayable
 import com.fredapps.gdriveshow.drive.label
@@ -61,6 +63,7 @@ import com.fredapps.gdriveshow.drive.subtitle
 import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationPrompt
 import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationResult
 import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationStartResult
+import com.fredapps.gdriveshow.drive.auth.DriveAccessTokenProvider
 import com.fredapps.gdriveshow.drive.auth.DriveAuthConfig
 import com.fredapps.gdriveshow.drive.auth.EncryptedDriveTokenStore
 import com.fredapps.gdriveshow.drive.auth.GoogleDeviceCodeAuthClient
@@ -117,14 +120,29 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         ),
     ) {
         val context = LocalContext.current
-        val authClient = remember(context) {
+        val tokenStore = remember(context) {
+            EncryptedDriveTokenStore(context.applicationContext)
+        }
+        val authConfig = remember(context) {
+            DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id))
+        }
+        val authClient = remember(authConfig, tokenStore) {
             GoogleDeviceCodeAuthClient(
-                config = DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id)),
-                tokenStore = EncryptedDriveTokenStore(context.applicationContext),
+                config = authConfig,
+                tokenStore = tokenStore,
             )
         }
-        val connectionState = remember { repository.connectionState() }
-        val contentState = remember { repository.rootContent() }
+        val googleDriveRepository = remember(authConfig, tokenStore) {
+            GoogleDriveRepository(
+                tokenStore = tokenStore,
+                accessTokenProvider = DriveAccessTokenProvider(
+                    config = authConfig,
+                    tokenStore = tokenStore,
+                ),
+            )
+        }
+        var connectionState by remember { mutableStateOf(repository.connectionState()) }
+        var contentState by remember { mutableStateOf<DriveContentState>(repository.rootContent()) }
         val driveItems = (contentState as? DriveContentState.Ready)?.items.orEmpty()
         val slideshowItems = remember(contentState) { repository.slideshowCandidates(driveItems) }
         var section by remember { mutableStateOf(AppSection.Drive) }
@@ -134,6 +152,28 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         var slideshowIndex by remember { mutableIntStateOf(0) }
         var showingSlideshow by remember { mutableStateOf(false) }
         var authUiState by remember { mutableStateOf<AuthUiState>(AuthUiState.Idle) }
+
+        fun loadDriveContent() {
+            if (tokenStore.read() == null) {
+                connectionState = repository.connectionState()
+                contentState = repository.rootContent()
+                return
+            }
+
+            connectionState = googleDriveRepository.connectionState()
+            contentState = DriveContentState.Loading
+            runBackground(
+                request = { googleDriveRepository.rootContent() },
+                onResult = { result ->
+                    connectionState = googleDriveRepository.connectionState()
+                    contentState = result
+                },
+            )
+        }
+
+        LaunchedEffect(Unit) {
+            loadDriveContent()
+        }
 
         val visibleItems = remember(filter, sortMode, driveItems) {
             driveItems
@@ -229,8 +269,8 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                             )
 
                                             is DeviceAuthorizationResult.Authorized -> AuthUiState.Authorized(
-                                                "Google Drive authorization succeeded. Real Drive browsing is the next repository slice.",
-                                            )
+                                                "Google Drive authorization succeeded. Loading real Drive content now.",
+                                            ).also { loadDriveContent() }
 
                                             is DeviceAuthorizationResult.Denied -> AuthUiState.Failed(result.message)
                                             is DeviceAuthorizationResult.Failed -> AuthUiState.Failed(result.message)
@@ -247,6 +287,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                                     },
                                     onResult = {
                                         authUiState = AuthUiState.SignedOut("Stored Google Drive tokens were cleared.")
+                                        loadDriveContent()
                                     },
                                 )
                             },
@@ -990,6 +1031,10 @@ private fun SlideshowScreen(
 }
 
 private fun <T> runAuthRequest(request: () -> T, onResult: (T) -> Unit) {
+    runBackground(request = request, onResult = onResult)
+}
+
+private fun <T> runBackground(request: () -> T, onResult: (T) -> Unit) {
     Thread {
         val result = request()
         Handler(Looper.getMainLooper()).post {

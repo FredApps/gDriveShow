@@ -27,6 +27,8 @@ app/src/main/res/values/oauth.xml
 
 The Settings screen already includes the TV-friendly connect flow. With the client ID filled in, it can request a code, poll for approval, and store tokens.
 
+When stored tokens exist, the app now attempts to load supported folders, images, and videos from the Google Drive root folder. Without tokens, it falls back to sample data.
+
 ## Local Setup
 
 This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
