@@ -39,30 +39,50 @@ Drive folder metadata is cached locally after successful loads and reused if the
 
 ## Local Setup
 
-This local checkout includes a copied `.tools` folder from `WatchTalk` for JDK, Android SDK, and Gradle. The folder is intentionally ignored by Git because it is large machine-local tooling.
+This checkout includes a local `.tools` folder containing the JDK, Android SDK, and Gradle. This folder is Git-ignored because it contains large machine-specific binaries.
 
-Build locally with:
+### Building for Development
+
+Build a debug APK that you can run on a device or emulator:
 
 ```powershell
 .\build-debug.ps1
 ```
 
-Run unit tests with:
+This script uses the local JDK, Android SDK, and Gradle to assemble the debug variant.
+
+### Running Unit Tests
+
+Set up the environment variables and run tests:
 
 ```powershell
-$env:JAVA_HOME=(Join-Path (Get-Location) '.tools\jdk')
-$env:ANDROID_SDK_ROOT=(Join-Path (Get-Location) '.tools\android-sdk')
-$env:ANDROID_HOME=$env:ANDROID_SDK_ROOT
+$env:JAVA_HOME = (Join-Path (Get-Location) '.tools\jdk')
+$env:ANDROID_SDK_ROOT = (Join-Path (Get-Location) '.tools\android-sdk')
+$env:ANDROID_HOME = $env:ANDROID_SDK_ROOT
 .\.tools\gradle\bin\gradle.bat :app:testDebugUnitTest --no-daemon
 ```
 
-Build a release APK with:
+### Building a Release APK
+
+To build a release APK for installation on a TV or device:
 
 ```powershell
 .\build-release.ps1
 ```
 
-For a signed release, set `GDRIVESHOW_KEYSTORE`, `GDRIVESHOW_KEYSTORE_PASSWORD`, `GDRIVESHOW_KEY_ALIAS`, and `GDRIVESHOW_KEY_PASSWORD` before running the release script. See `docs/RELEASE.md`.
+This creates an unsigned release APK suitable for testing on a device you control.
+
+**For a signed release APK** (required for distribution), set these environment variables before running the script:
+
+```powershell
+$env:GDRIVESHOW_KEYSTORE = "C:\path\to\gdriveshow-release.jks"
+$env:GDRIVESHOW_KEYSTORE_PASSWORD = "store-password"
+$env:GDRIVESHOW_KEY_ALIAS = "gdriveshow"
+$env:GDRIVESHOW_KEY_PASSWORD = "key-password"
+.\build-release.ps1
+```
+
+For detailed signing and release instructions, see `docs/RELEASE.md`.
 
 ## Repository
 
