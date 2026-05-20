@@ -1,8 +1,8 @@
-package com.fredapps.gdriveshow.drive
+package com.fredapp.gdriveshow.drive
 
-import com.fredapps.gdriveshow.drive.auth.AccessTokenResult
-import com.fredapps.gdriveshow.drive.auth.DriveAccessTokenProvider
-import com.fredapps.gdriveshow.drive.auth.DriveTokenStore
+import com.fredapp.gdriveshow.drive.auth.AccessTokenResult
+import com.fredapp.gdriveshow.drive.auth.DriveAccessTokenProvider
+import com.fredapp.gdriveshow.drive.auth.DriveTokenStore
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection

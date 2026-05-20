@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow.drive.auth
+package com.fredapp.gdriveshow.drive.auth
 
 interface DriveTokenStore {
     fun read(): StoredDriveTokens?

@@ -82,6 +82,7 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 - Metadata cache and thumbnail byte cache.
 - Release build script and conditional signing config.
 - Unit tests for Drive metadata mapping.
+- Local OAuth client-ID injection for device testing.
 - TV-safe typography and focus QA.
 
 ## Current Implementation Notes
@@ -114,9 +115,10 @@ gDriveShow turns a TV into a calm, reliable display surface for personal Google 
 16. Add metadata caching, thumbnail caching, and cached fallback on Drive errors. Done.
 17. Add shared drive root entries and all-drives file listing flags. Done.
 18. Add release build/signing pipeline and first unit tests. Done.
+19. Add ignored local OAuth config and Settings diagnostics for easier real-device testing. Done.
 
 ## Remaining External Validation
 
-- `app/src/main/res/values/oauth.xml` still needs the real Google OAuth TV client ID.
-- Real-device Google sign-in still needs to be verified on an Android TV or emulator after that client ID is installed.
+- A real Google OAuth TV client ID still needs to be provided locally or in production build config.
+- Real-device Google sign-in still needs to be verified on an Android TV or emulator after that client ID is configured.
 - Shared-drive browsing should be validated against a real account with shared drives.

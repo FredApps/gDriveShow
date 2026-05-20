@@ -5,6 +5,7 @@
 build/
 captures/
 local.properties
+oauth.local.properties
 *.iml
 *.jks
 *.keystore

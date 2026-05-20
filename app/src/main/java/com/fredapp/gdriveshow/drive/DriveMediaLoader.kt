@@ -1,9 +1,9 @@
-package com.fredapps.gdriveshow.drive
+package com.fredapp.gdriveshow.drive
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import com.fredapps.gdriveshow.drive.auth.AccessTokenResult
-import com.fredapps.gdriveshow.drive.auth.DriveAccessTokenProvider
+import com.fredapp.gdriveshow.drive.auth.AccessTokenResult
+import com.fredapp.gdriveshow.drive.auth.DriveAccessTokenProvider
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL

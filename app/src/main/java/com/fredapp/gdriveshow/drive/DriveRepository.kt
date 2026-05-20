@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow.drive
+package com.fredapp.gdriveshow.drive
 
 interface DriveRepository {
     fun connectionState(): DriveConnectionState

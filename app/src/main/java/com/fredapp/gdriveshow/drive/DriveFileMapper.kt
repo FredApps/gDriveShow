@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow.drive
+package com.fredapp.gdriveshow.drive
 
 data class DriveFileMetadata(
     val id: String,

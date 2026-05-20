@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow.drive
+package com.fredapp.gdriveshow.drive
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow.drive.auth
+package com.fredapp.gdriveshow.drive.auth
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences

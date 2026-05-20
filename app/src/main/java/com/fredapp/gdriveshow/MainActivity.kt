@@ -1,4 +1,4 @@
-package com.fredapps.gdriveshow
+package com.fredapp.gdriveshow
 
 import android.os.Bundle
 import android.os.Handler
@@ -71,31 +71,31 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import com.fredapps.gdriveshow.drive.DriveItem
-import com.fredapps.gdriveshow.drive.DriveConnectionState
-import com.fredapps.gdriveshow.drive.DriveContentState
-import com.fredapps.gdriveshow.drive.DriveMediaType
-import com.fredapps.gdriveshow.drive.DriveRepository
-import com.fredapps.gdriveshow.drive.GoogleDriveRepository
-import com.fredapps.gdriveshow.drive.AppPreferences
-import com.fredapps.gdriveshow.drive.DriveMediaLoader
-import com.fredapps.gdriveshow.drive.DriveMetadataCache
-import com.fredapps.gdriveshow.drive.DriveThumbnailCache
-import com.fredapps.gdriveshow.drive.ImageLoadResult
-import com.fredapps.gdriveshow.drive.SampleDriveRepository
-import com.fredapps.gdriveshow.drive.StartupFolder
-import com.fredapps.gdriveshow.drive.VideoRequest
-import com.fredapps.gdriveshow.drive.isPlayable
-import com.fredapps.gdriveshow.drive.label
-import com.fredapps.gdriveshow.drive.statusLabel
-import com.fredapps.gdriveshow.drive.subtitle
-import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationPrompt
-import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationResult
-import com.fredapps.gdriveshow.drive.auth.DeviceAuthorizationStartResult
-import com.fredapps.gdriveshow.drive.auth.DriveAccessTokenProvider
-import com.fredapps.gdriveshow.drive.auth.DriveAuthConfig
-import com.fredapps.gdriveshow.drive.auth.EncryptedDriveTokenStore
-import com.fredapps.gdriveshow.drive.auth.GoogleDeviceCodeAuthClient
+import com.fredapp.gdriveshow.drive.DriveItem
+import com.fredapp.gdriveshow.drive.DriveConnectionState
+import com.fredapp.gdriveshow.drive.DriveContentState
+import com.fredapp.gdriveshow.drive.DriveMediaType
+import com.fredapp.gdriveshow.drive.DriveRepository
+import com.fredapp.gdriveshow.drive.GoogleDriveRepository
+import com.fredapp.gdriveshow.drive.AppPreferences
+import com.fredapp.gdriveshow.drive.DriveMediaLoader
+import com.fredapp.gdriveshow.drive.DriveMetadataCache
+import com.fredapp.gdriveshow.drive.DriveThumbnailCache
+import com.fredapp.gdriveshow.drive.ImageLoadResult
+import com.fredapp.gdriveshow.drive.SampleDriveRepository
+import com.fredapp.gdriveshow.drive.StartupFolder
+import com.fredapp.gdriveshow.drive.VideoRequest
+import com.fredapp.gdriveshow.drive.isPlayable
+import com.fredapp.gdriveshow.drive.label
+import com.fredapp.gdriveshow.drive.statusLabel
+import com.fredapp.gdriveshow.drive.subtitle
+import com.fredapp.gdriveshow.drive.auth.DeviceAuthorizationPrompt
+import com.fredapp.gdriveshow.drive.auth.DeviceAuthorizationResult
+import com.fredapp.gdriveshow.drive.auth.DeviceAuthorizationStartResult
+import com.fredapp.gdriveshow.drive.auth.DriveAccessTokenProvider
+import com.fredapp.gdriveshow.drive.auth.DriveAuthConfig
+import com.fredapp.gdriveshow.drive.auth.EncryptedDriveTokenStore
+import com.fredapp.gdriveshow.drive.auth.GoogleDeviceCodeAuthClient
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -167,8 +167,13 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
         val thumbnailCache = remember(context) {
             DriveThumbnailCache(context.applicationContext)
         }
-        val authConfig = remember(context) {
-            DriveAuthConfig(clientId = context.getString(R.string.google_oauth_tv_client_id))
+        val googleOAuthClientId = remember(context) {
+            BuildConfig.GOOGLE_OAUTH_TV_CLIENT_ID
+                .ifBlank { context.getString(R.string.google_oauth_tv_client_id) }
+                .trim()
+        }
+        val authConfig = remember(googleOAuthClientId) {
+            DriveAuthConfig(clientId = googleOAuthClientId)
         }
         val authClient = remember(authConfig, tokenStore) {
             GoogleDeviceCodeAuthClient(
@@ -350,6 +355,7 @@ private fun GDriveShowApp(repository: SampleDriveRepository = SampleDriveReposit
                             startupFolder = startupFolder,
                             currentFolder = folderStack.last(),
                             folderOptions = driveItems.filter { it.type == DriveMediaType.Folder },
+                            oauthConfigured = authConfig.clientId.isNotBlank(),
                             authState = authUiState,
                             onPickStartupFolder = { folder ->
                                 val nextStartupFolder = StartupFolder(folder.id, folder.title)
@@ -1012,6 +1018,7 @@ private fun SettingsScreen(
     startupFolder: StartupFolder,
     currentFolder: FolderLocation,
     folderOptions: List<DriveItem>,
+    oauthConfigured: Boolean,
     authState: AuthUiState,
     onPickStartupFolder: (StartupFolder) -> Unit,
     onConnect: () -> Unit,
@@ -1029,6 +1036,7 @@ private fun SettingsScreen(
                 title = "Drive",
                 rows = listOf(
                     "Account" to connectionState.settingsLabel,
+                    "OAuth client" to if (oauthConfigured) "Configured" else "Missing",
                     "Starting folder" to startupFolder.title,
                     "Shared drives" to "Root picker enabled",
                 ),
@@ -1062,6 +1070,7 @@ private fun SettingsScreen(
         )
         Spacer(modifier = Modifier.height(22.dp))
         DriveAuthPanel(
+            oauthConfigured = oauthConfigured,
             authState = authState,
             onConnect = onConnect,
             onCheckAuthorization = onCheckAuthorization,
@@ -1149,6 +1158,7 @@ private val DriveConnectionState.settingsLabel: String
 
 @Composable
 private fun DriveAuthPanel(
+    oauthConfigured: Boolean,
     authState: AuthUiState,
     onConnect: () -> Unit,
     onCheckAuthorization: (DeviceAuthorizationPrompt) -> Unit,
@@ -1168,14 +1178,18 @@ private fun DriveAuthPanel(
         when (authState) {
             AuthUiState.Idle -> {
                 Text(
-                    text = "Connect with Google's TV sign-in flow. The app will show a code to approve on another device.",
-                    color = Color(0xFFCFD7DE),
+                    text = if (oauthConfigured) {
+                        "Connect with Google's TV sign-in flow. The app will show a code to approve on another device."
+                    } else {
+                        "Add a Google OAuth TV client ID before testing sign-in. Use GOOGLE_OAUTH_TV_CLIENT_ID or oauth.local.properties for local builds."
+                    },
+                    color = if (oauthConfigured) Color(0xFFCFD7DE) else Color(0xFFFFB4A8),
                     fontSize = 15.sp,
                     lineHeight = 21.sp,
                 )
                 Spacer(modifier = Modifier.height(18.dp))
                 ButtonRow {
-                    PrimaryActionButton(label = "Connect", onClick = onConnect)
+                    PrimaryActionButton(label = "Connect", enabled = oauthConfigured, onClick = onConnect)
                     SecondaryActionButton(label = "Clear tokens", onClick = onSignOut)
                 }
             }
@@ -1258,12 +1272,15 @@ private fun ButtonRow(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun PrimaryActionButton(label: String, onClick: () -> Unit) {
+private fun PrimaryActionButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         colors = ButtonDefaults.buttonColors(
             containerColor = Color(0xFF72D6C9),
             contentColor = Color(0xFF101214),
+            disabledContainerColor = Color(0xFF303941),
+            disabledContentColor = Color(0xFF8C98A3),
         ),
         shape = RoundedCornerShape(6.dp),
     ) {

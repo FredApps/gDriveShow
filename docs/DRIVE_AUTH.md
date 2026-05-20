@@ -31,12 +31,13 @@ Google docs:
 - `GoogleDeviceCodeAuthClient` implements the device-code request and token polling calls.
 - `EncryptedDriveTokenStore` stores OAuth tokens with AndroidX encrypted shared preferences.
 - `DriveAuthConfig` holds the OAuth client ID and requested scopes.
-- `google_oauth_tv_client_id` is currently blank in `app/src/main/res/values/oauth.xml`.
+- Local builds can inject the OAuth client ID with `GOOGLE_OAUTH_TV_CLIENT_ID`, Gradle property `googleOAuthTvClientId`, or ignored `oauth.local.properties`.
+- `google_oauth_tv_client_id` can remain blank in `app/src/main/res/values/oauth.xml` during local testing.
 - Settings includes a remote-friendly Connect flow that shows the Google user code, verification URL, and approval-check action.
 - `DriveAccessTokenProvider` reuses stored access tokens and refreshes them when they are close to expiry.
 - `GoogleDriveRepository` lists Drive folders/media with `files.list`, includes all-drives flags, appends shared-drive root entries, and stores folder metadata in a local cache after successful loads.
 
-After creating the Google Cloud OAuth client, put the TV/limited-input client ID in `google_oauth_tv_client_id`. Do not add a client secret; this flow is for installed devices that cannot keep secrets.
+After creating the Google Cloud OAuth client, provide the TV/limited-input client ID through the local build environment or, for a deliberately branded production build, through `google_oauth_tv_client_id`. Do not add a client secret; this flow is for installed devices that cannot keep secrets.
 
 ## Drive Listing Query
 
@@ -69,5 +70,5 @@ Then filter app-side for folders plus MIME types starting with `image/` or `vide
 - Enable the Google Drive API.
 - Decide final scope. Prefer the narrowest read-only scope that supports browsing the intended Drive content.
 - Replace the remaining sample account label with token-aware account/profile data.
-- Install the real OAuth client ID in `app/src/main/res/values/oauth.xml`.
+- Provide the real OAuth client ID through `GOOGLE_OAUTH_TV_CLIENT_ID`, Gradle property `googleOAuthTvClientId`, `oauth.local.properties`, or the production resource value.
 - Verify the Settings sign-in flow on an Android TV device or emulator.
