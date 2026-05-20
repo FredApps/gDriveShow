@@ -2,6 +2,18 @@
 
 Android TV app for browsing and displaying Google Drive images and videos from the couch.
 
+## Status
+
+This app is entirely untested. Expect rough edges, missing coverage, and possible runtime issues.
+Do not use it with important Google Drive data yet; OAuth, caching, media playback, and TV navigation may fail or behave unexpectedly.
+
+There is no CI configured for this repository. The intended local checks are:
+
+```powershell
+.\build-debug.ps1
+.\.tools\gradle\bin\gradle.bat :app:testDebugUnitTest --no-daemon
+```
+
 ## Goals
 
 - Browse Google Drive folders, images, and videos with D-pad-friendly navigation.
@@ -138,4 +150,10 @@ For detailed signing and release instructions, see `docs/RELEASE.md`.
 
 ## Repository
 
-Private GitHub repository: https://github.com/FredApps/gDriveShow
+Public GitHub repository: https://github.com/FredApps/gDriveShow
+
+Issues and wiki are disabled for now while the app is still untested.
+
+## License
+
+GPLv3. See `LICENSE`.
