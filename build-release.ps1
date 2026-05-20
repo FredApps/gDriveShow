@@ -16,4 +16,19 @@ $env:ANDROID_HOME = $AndroidSdk
 
 "sdk.dir=$($AndroidSdk -replace '\\', '\\')" | Set-Content -Path (Join-Path $ProjectRoot "local.properties") -Encoding ASCII
 
+# Auto-load signing credentials from OneDrive secrets if not already set by CI.
+$SecretsDir = Join-Path $env:USERPROFILE "OneDrive\Projects\.secrets"
+$DefaultKeystore = Join-Path $SecretsDir "gDriveShow-release.jks"
+$DefaultPasswordFile = Join-Path $SecretsDir "gDriveShow-release.password.txt"
+
+if (-not $env:GDRIVESHOW_KEYSTORE -and (Test-Path $DefaultKeystore)) {
+    $env:GDRIVESHOW_KEYSTORE = $DefaultKeystore
+    $env:GDRIVESHOW_KEY_ALIAS = "gdriveshow"
+    if (Test-Path $DefaultPasswordFile) {
+        $pass = (Get-Content $DefaultPasswordFile -Raw).Trim()
+        $env:GDRIVESHOW_KEYSTORE_PASSWORD = $pass
+        $env:GDRIVESHOW_KEY_PASSWORD = $pass
+    }
+}
+
 & $Gradle -p $ProjectRoot :app:assembleRelease --no-daemon

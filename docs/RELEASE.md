@@ -18,35 +18,55 @@ Gradle will assemble the release variant and output an unsigned APK to `app/buil
 
 For installation on TVs or for distribution, you need a signing key. The app will only install on devices if the APK is signed with the same key.
 
-### Step 1: Create a Signing Keystore (One Time)
+### Signing Keystore Location
 
-If you don't already have a keystore, create one:
+The keystore lives in OneDrive alongside the other FredApps secrets:
+
+```
+%USERPROFILE%\OneDrive\Projects\.secrets\gDriveShow-release.jks
+%USERPROFILE%\OneDrive\Projects\.secrets\gDriveShow-release.password.txt
+```
+
+Key alias: `gdriveshow`
+
+### Local Signed Build (auto-wired)
+
+`build-release.ps1` automatically picks up the keystore from the secrets folder above when
+`GDRIVESHOW_KEYSTORE` is not already set. Just run:
+
+```powershell
+.\build-release.ps1
+```
+
+The signed APK will be written to `app/build/outputs/apk/release/app-release.apk`.
+
+### Creating the Keystore (one-time, already done)
+
+If you ever need to recreate the keystore from scratch:
 
 ```powershell
 & .\.tools\jdk\bin\keytool.exe -genkeypair `
   -v `
-  -keystore C:\path\to\gdriveshow-release.jks `
+  -keystore "$env:USERPROFILE\OneDrive\Projects\.secrets\gDriveShow-release.jks" `
   -alias gdriveshow `
   -keyalg RSA `
   -keysize 4096 `
   -validity 10000
 ```
 
-You will be prompted to create passwords and enter certificate details. Keep the keystore file and passwords secure—**do not commit them to source control**.
+Store the chosen passwords in `gDriveShow-release.password.txt` (raw password, no newline).
 
-### Step 2: Build with Your Signing Key
+### CI / Manual Override
 
-Before building, set these environment variables to your keystore details:
+To override signing credentials explicitly (e.g. in a CI environment):
 
 ```powershell
-$env:GDRIVESHOW_KEYSTORE = "C:\path\to\gdriveshow-release.jks"
+$env:GDRIVESHOW_KEYSTORE          = "C:\path\to\gDriveShow-release.jks"
 $env:GDRIVESHOW_KEYSTORE_PASSWORD = "your-store-password"
-$env:GDRIVESHOW_KEY_ALIAS = "gdriveshow"
-$env:GDRIVESHOW_KEY_PASSWORD = "your-key-password"
+$env:GDRIVESHOW_KEY_ALIAS         = "gdriveshow"
+$env:GDRIVESHOW_KEY_PASSWORD      = "your-key-password"
 .\build-release.ps1
 ```
-
-The signed APK will be written to `app/build/outputs/apk/release/app-release.apk`.
 
 ### Step 3: Install on Android TV
 
@@ -60,7 +80,6 @@ The `-r` flag replaces any existing installation.
 
 ## Security
 
-- **Never commit the keystore file** to Git—add it to `.gitignore` if needed.
+- **Never commit the keystore file** to Git — it lives in OneDrive, not the repo.
 - **Never commit keystore passwords** to source control.
 - Keep the OAuth client ID and signing credentials separate from Git.
-- Consider storing these secrets in a secure build secret manager.
